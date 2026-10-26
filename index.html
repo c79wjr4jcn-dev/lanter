@@ -2,7 +2,7 @@
 <html lang="sk">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Lanter Litofánia</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="theme-color" content="#110f0d">
@@ -182,7 +182,7 @@ details.more>div{padding:0 14px 12px}
   background:radial-gradient(80% 70% at 50% 45%,#1f1a15,#0c0a08 75%)}
 #stage{position:absolute;inset:0}
 #c3d,#night,#photo{position:absolute;inset:0}
-#c3d{touch-action:none}
+#c3d{touch-action:none}html,body{overscroll-behavior:none}.stagewrap,.vbar,#photo,#night{touch-action:none}
 #c3d canvas{display:block}
 #night,#photo{display:none;align-items:center;justify-content:center;background:#050403}
 #night canvas{max-width:90%;max-height:84%;box-shadow:0 0 80px rgba(255,170,90,.2)}
@@ -2370,7 +2370,8 @@ function centerOnScreen(depth=0){   // move the camera so the piece sits exactly
   const hr=host.getBoundingClientRect(),vs=$('view').getBoundingClientRect(),top=clamp(vs.bottom-hr.top+8,0,H*0.3),bot=56;
   const u=2*Math.tan(camera.fov*Math.PI/360)*camera.position.z/H,dx=(x0+x1)/2-W/2,dy=(y0+y1)/2-(top+(H-bot))/2;
   camera.position.x+=dx*u;camera.position.y-=dy*u;camera.updateMatrixWorld(true);
-  const fit=Math.max((x1-x0)/(W*0.92),(y1-y0)/Math.max(40,(H-bot-top)*0.94));if(fit>1.001&&depth<3){camera.position.z*=fit*1.02;camera.updateMatrixWorld(true);centerOnScreen(depth+1);}}
+  const fit=Math.max((x1-x0)/(W*0.92),(y1-y0)/Math.max(40,(H-bot-top)*0.94));if(fit>1.001&&depth<3){camera.position.z*=fit*1.02;camera.updateMatrixWorld(true);centerOnScreen(depth+1);}
+  else if(fit<0.86&&depth<3&&!state.uiCamTouched&&matchMedia('(max-width:600px)').matches){camera.position.z*=Math.max(0.35,fit/0.93);camera.updateMatrixWorld(true);centerOnScreen(depth+1);}}
 function resize(){if(!renderer)return;const h=$('c3d');if(!h.clientWidth||!h.clientHeight)return;   // hidden (photo / night view) – keep the last good size
   renderer.setSize(h.clientWidth,h.clientHeight);camera.aspect=h.clientWidth/Math.max(1,h.clientHeight);camera.updateProjectionMatrix();draw();}
 function draw(){if(renderer)renderer.render(scene,camera);}
@@ -2412,7 +2413,7 @@ function dimLabel(text,size){const c=document.createElement('canvas'),g=c.getCon
 const DIM_SETS={flat:['W','H'],arc:['W','H'],cyl:['dIn','dOut','H'],cone:['dIn','dtIn','H'],prism:['W','H'],house:['W','H'],sphere:['W','H','holeB','holeT'],lathe:['W','H']};
 function drawDims(){
   if(!renderer)return;if(state.dimObj){group.remove(state.dimObj);state.dimObj.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){if(o.material.map)o.material.map.dispose();o.material.dispose();}});state.dimObj=null;}
-  const keys=new Set($('dimShow')&&$('dimShow').checked&&state.step==='shape'?(DIM_SETS[state.surf]||[]).concat($('frameOn').checked?['fw','ft']:[]):[]);if(state.dimKey)keys.add(state.dimKey);
+  const fsm=document.body.classList.contains('fsm')&&!document.body.classList.contains('fsnodim'),keys=new Set(fsm||($('dimShow')&&$('dimShow').checked&&state.step==='shape')?(DIM_SETS[state.surf]||[]).concat($('frameOn').checked?['fw','ft']:[]):[]);if(state.dimKey)keys.add(state.dimKey);
   if(!keys.size){draw();return;}
   const all=new THREE.Group();group.add(all);state.dimObj=all;
   state.dimPts=[];for(const k of keys)drawDim(k,all,k===state.dimKey);
@@ -2921,6 +2922,12 @@ function printGuide(){
   table,tr{break-inside:avoid}</style></head><body><h1>Lanter – nastavenie tlače</h1>
   ${printTips(params(),state.mesh,state.F)}${IN_ART?'':'<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script>'}</body></html>`;
   if(IN_ART){saveFile('lanter_nastavenie_tlace.html',html);return;}
+  if(matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:600px)').matches||navigator.standalone){   // phone: show inside the app (pop-ups do not work there)
+    let o=document.getElementById('setOv');if(o)o.remove();o=document.createElement('div');o.id='setOv';
+    o.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:#fff;padding-top:env(safe-area-inset-top,0px)';
+    o.innerHTML='<div style="display:flex;gap:8px;padding:8px 12px;background:#1a1410"><button type="button" id="setX" style="flex:1;min-height:44px;border-radius:10px;border:1px solid #e8a55a;background:transparent;color:#e8a55a;font:700 15px system-ui">← Späť</button><button type="button" id="setS" style="flex:1;min-height:44px;border-radius:10px;border:0;background:#e8a55a;color:#1a1410;font:700 15px system-ui">Uložiť súbor</button></div><iframe style="flex:1;border:0;width:100%"></iframe>';
+    document.body.appendChild(o);o.querySelector('iframe').srcdoc=html;
+    o.querySelector('#setX').onclick=()=>o.remove();o.querySelector('#setS').onclick=()=>saveFile('lanter_nastavenie_tlace.html',html);return;}
   const w=window.open('','_blank'); if(!w){saveFile('lanter_nastavenie_tlace.html',html);return;}
   w.document.write(html); w.document.close();
 }
@@ -4534,7 +4541,7 @@ function uiSync(){if(!uiReady)return;
   uiSetText('sumLook',(sf==='house'?'Fotky v oknách':ln)+' · '+cm+(tx?` · „${tx}“`:''));
   const mk=$('m_kind');uiSetText('sumMotif',mk.value==='none'?'Žiadny':(mk.options[mk.selectedIndex]||{}).text||'');
   uiSetText('prodName',uiName());
-  const F=state.uiFacts;uiSetHTML('prodFacts',uiFactsHTML(F));uiSetHTML('doneFacts',uiFactsHTML(F));
+  const F=state.uiFacts;uiSetHTML('prodFacts',uiFactsHTML(F));uiSetHTML('doneFacts',uiFactsHTML(F));uiSetHTML('fsInfo',uiFactsHTML(F));
   if(F&&F.b)uiSetText('doneLead',`${uiName()} · ${r(F.b[0])} × ${r(F.b[1])} × ${r(F.b[2])} mm`);
   if(state.uiAdvance&&state.userPhoto&&state.step==='photo'){state.uiAdvance=false;setTimeout(uiOpenProduct,450);}
 }
@@ -4564,13 +4571,23 @@ $('recipes').addEventListener('click',e=>{const b=e.target.closest('button[data-
 
 /* phone: one button that collapses the sheet and shows the lit 3D model, and back */
 (()=>{const st=document.createElement('style');st.textContent='.seemodel{display:none}@media (max-width:600px){.seemodel{display:flex;align-items:center;justify-content:center;gap:8px;width:calc(100% - 24px);margin:8px 12px 10px;min-height:44px;border-radius:999px;border:1px solid var(--accent);background:transparent;color:var(--accent);font:700 14px var(--ui);cursor:pointer}.seemodel.on{background:var(--accent);color:var(--ink)}}';document.head.appendChild(st);})();
+['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('touchmove',e=>{if(e.touches.length>1&&e.target.closest&&e.target.closest('.stagewrap,#photo,#night'))e.preventDefault();},{passive:false});
+/* phone: full-screen model (hides the title bar and the sheet) */
+(()=>{const st=document.createElement('style');st.textContent='.fsbtn{display:none}@media (max-width:600px){.fsbtn{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:12px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid var(--line2,#555);background:rgba(20,16,12,.72);color:var(--accent);font:700 20px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm header.top{display:none}body.fsm #panel{border:0;overflow:hidden;padding:0}body.fsm .stagewrap{border-radius:0}#fsInfo,#fsDim{display:none}body.fsm #fsInfo{display:flex;flex-wrap:wrap;gap:6px;position:absolute;left:12px;right:112px;bottom:68px;z-index:5;pointer-events:none}body.fsm.fsnodim #fsInfo{display:none}body.fsm #fsDim{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:68px;z-index:6;height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--accent);background:rgba(20,16,12,.8);color:var(--accent);font:700 13px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm.fsnodim #fsDim{background:transparent;color:#f3e6d3;border-color:#6b5a45}#fsInfo .fact{background:rgba(20,16,12,.85);border:1px solid #6b5a45;color:#f3e6d3;border-radius:999px;padding:5px 10px;font:600 12.5px system-ui}#fsInfo .fact i{font-style:normal;opacity:.7}}';document.head.appendChild(st);
+  const sw=document.querySelector('.stagewrap'),b=document.createElement('button');b.type='button';b.className='fsbtn';b.id='fsBtn';b.setAttribute('aria-label','Model na celú obrazovku');b.textContent='⛶';sw.appendChild(b);const fi=document.createElement('div');fi.id='fsInfo';sw.appendChild(fi);const fd=document.createElement('button');fd.type='button';fd.id='fsDim';fd.textContent='Rozmery';sw.appendChild(fd);
+  try{if(localStorage.getItem('lanterNoDim')==='1')document.body.classList.add('fsnodim');}catch(e){}
+  fd.addEventListener('click',()=>{const off=document.body.classList.toggle('fsnodim');try{localStorage.setItem('lanterNoDim',off?'1':'0');}catch(e){}fd.setAttribute('aria-pressed',String(!off));try{drawDims();}catch(e){}});
+  b.addEventListener('click',()=>{const on=!document.body.classList.contains('fsm');document.body.classList.toggle('fsm',on);b.textContent=on?'✕':'⛶';b.setAttribute('aria-label',on?'Späť k nastaveniam':'Model na celú obrazovku');
+    if(on&&!['day','lit','photo'].includes(state.view))setView('lit');
+    uiSetSheet();state.uiCamTouched=false;[60,250,600].forEach(t=>setTimeout(()=>{try{resize();centerOnScreen();drawDims();}catch(e){}},t));});})();
 /* phone: bottom sheet with drag handle and 3 snap points; the 3D stage always fills the area above it */
 const uiMQ=matchMedia('(max-width:600px)'),uiSheet={snap:'half'};
 function uiSheetH(n){const H=document.querySelector('.app').clientHeight||innerHeight,hd=$('sheetHead').offsetHeight||70;
   return n==='min'?Math.round(Math.min(H*0.42,hd+80)):n==='full'?H-4:Math.round(H*0.54);}
 function uiSetSheet(n,px){const P=$('panel'),R=document.documentElement;
   if(!uiMQ.matches){P.style.height='';R.style.removeProperty('--sv');return;}
-  if(n)uiSheet.snap=n;const h=Math.round(px!=null?px:uiSheetH(uiSheet.snap));P.style.height=h+'px';R.style.setProperty('--sv',h+'px');P.dataset.snap=uiSheet.snap;}
+  if(n)uiSheet.snap=n;if(document.body.classList.contains('fsm')&&px==null)px=0;const h=Math.round(px!=null?px:uiSheetH(uiSheet.snap));P.style.height=h+'px';R.style.setProperty('--sv',h+'px');P.dataset.snap=uiSheet.snap;}
 (()=>{const head=$('sheetHead'),P=$('panel'),app=document.querySelector('.app');let id=null,y0=0,h0=0,moved=false,ly=0,lt=0,vel=0,swallow=false;
   head.addEventListener('pointerdown',e=>{if(!uiMQ.matches||e.button>0)return;id=e.pointerId;y0=ly=e.clientY;lt=performance.now();h0=P.getBoundingClientRect().height;moved=false;vel=0;});
   head.addEventListener('pointermove',e=>{if(e.pointerId!==id)return;const dy=e.clientY-y0;
@@ -4609,6 +4626,17 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('onboard').hidden)uiTips(
 {let seen=false;try{seen=!!localStorage.getItem(UI_OB);}catch(e){}if(!seen){$('onboard').hidden=false;document.body.classList.add('tips-open');}}
 
 uiReady=true;uiStep(state.step||'photo');uiSync();
+</script>
+<script>
+/* Anonymné počítadlo (len web verzia). Posiela sa IBA názov udalosti ("foto", "export", "otvorenie") – nikdy fotka ani model.
+   Nastav GC_KOD na kód z goatcounter.com (napr. "lanter" → lanter.goatcounter.com). Prázdne = nič sa neposiela. */
+(function(){var GC_KOD='';
+if(!GC_KOD||!/^https?:/.test(location.protocol)||navigator.doNotTrack==='1')return;
+function ev(n){try{var i=new Image();i.src='https://'+GC_KOD+'.goatcounter.com/count?p='+encodeURIComponent('/'+n)+'&e=true&t='+encodeURIComponent(n)+'&r='+Math.random()}catch(e){}}
+ev('otvorenie');
+document.addEventListener('change',function(e){var t=e.target;if(t&&t.type==='file'&&t.files&&t.files.length&&/image/.test(t.accept||'image'))ev('foto')},true);
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#dl,#dl2');if(b)ev('export')},true);
+})();
 </script>
 <script>if('serviceWorker' in navigator&&/^https?:/.test(location.protocol))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script></body>
 </html>
