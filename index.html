@@ -2502,10 +2502,16 @@ function showMesh(M){
   const FC=state.F&&(state.F.colView||state.F.col);   // colour lithophane: predicted colour per vertex
   if(FC){const put=(v,g)=>{for(let a=0;a<3;a++)col[3*v+a]=lin2srgb(clamp(FC[3*g+a],0,1));};
     if(M.gridTop)for(let v=0;v<M.gridTop;v++)put(v,v);else if(M.Ti)for(let g=0;g<M.Ti.length;g++)if(M.Ti[g]>=0)put(M.Ti[g],g);}
-  if(state.F&&state.F.O){   // relief on: a soft room light from the upper left so the bulging face is visible in the lit view too
+  if(false&&state.F&&state.F.O){   // (off: shading the 0.2 mm steps made fake ridges in the lit view – a backlit piece shows only the light through it) relief on: a soft room light from the upper left so the bulging face is visible in the lit view too
     const N=geo.attributes.normal.array,L=[-0.45,0.55,0.7],ll=Math.hypot(...L);
     for(let k=0;k<col.length/3;k++){const d=(N[3*k]*L[0]+N[3*k+1]*L[1]+N[3*k+2]*L[2])/ll,f=0.72+0.36*Math.max(0,d);for(let a=0;a<3;a++)col[3*k+a]*=f;}}
   geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  state.posAll=geo.attributes.position;state.posLit=null;
+  if(state.surf==='flat'&&M.gridTop&&M.Tv){try{const P=state.posAll.array,n=Math.min(M.gridTop,M.partsFrom||M.gridTop,M.Tv.length),tx=+$('tmax').value||3.4;
+      let sxy=0,sx=0,sy=0,sxx=0,c=0;for(let k=0;k<n;k+=97){const t=M.Tv[k];if(t<tmin-0.01||t>tx+0.01)continue;const z=P[3*k+2];sxy+=t*z;sx+=t;sy+=z;sxx+=t*t;c++;}
+      const cov=sxy-sx*sy/Math.max(1,c),sg=cov>0?1:cov<0?-1:0;
+      if(sg&&c>20){const Q=new Float32Array(P);for(let k=0;k<n;k++){const t=M.Tv[k];if(t<tmin-0.01||t>tx+0.01)continue;Q[3*k+2]=P[3*k+2]-sg*(t-tmin)*0.92;}state.posLit=new THREE.BufferAttribute(Q,3);}}catch(e){state.posLit=null;}}
+  if(state.posLit&&isLit())geo.setAttribute('position',state.posLit);
   state.idxAll=geo.index;state.idxLit=null;{const Ia=geo.index.array,T=M.Tv;let hid=false;for(let k=0;k<T.length;k++)if(T[k]<=-5){hid=true;break;}   // break-off stands / rings: printed, snapped off – not in the lit preview
     if(hid){const keep=[];for(let k=0;k<Ia.length;k+=3){const a=Ia[k],b=Ia[k+1],c=Ia[k+2];if(T[a]>-5&&T[b]>-5&&T[c]>-5)keep.push(a,b,c);}state.idxLit=new THREE.BufferAttribute(Uint32Array.from(keep),1);if(isLit())geo.setIndex(state.idxLit);}}
   state.matDay=state.matDay||new THREE.MeshStandardMaterial({color:0xece4d6,roughness:0.55,metalness:0,side:THREE.DoubleSide});
@@ -3867,7 +3873,7 @@ function syncUI(){syncD3();
   $('bgPhotoRow').style.display=$('bg_fill').value==='photo'?'block':'none';markBgTile();
   $('scRow').style.display=SCENES.includes($('bg_fill').value)?'flex':'none';
   updateBox();
-  if(v3){ if(meshObj){meshObj.material=isLit()?state.matLit:state.matDay;if(state.idxLit)meshObj.geometry.setIndex(isLit()?state.idxLit:state.idxAll);} if(state.glow){state.glow.visible=isLit();state.pool.visible=isLit()&&state.pool.userData.on;} if(renderer)renderer.setClearColor(state.view==='night'?0x000000:isLit()?0x0b0908:0x141210); if(state.back)state.back.visible=isLit()&&!state.back.noPanel; resize(); }
+  if(v3){ if(meshObj){meshObj.material=isLit()?state.matLit:state.matDay;if(state.posLit&&state.posAll){meshObj.geometry.setAttribute('position',isLit()?state.posLit:state.posAll);}if(state.idxLit)meshObj.geometry.setIndex(isLit()?state.idxLit:state.idxAll);} if(state.glow){state.glow.visible=isLit();state.pool.visible=isLit()&&state.pool.userData.on;} if(renderer)renderer.setClearColor(state.view==='night'?0x000000:isLit()?0x0b0908:0x141210); if(state.back)state.back.visible=isLit()&&!state.back.noPanel; resize(); }
   if(typeof uiSync==='function')uiSync();
 }
 $('shape').innerHTML=SHAPES.map(([v,l])=>`<button data-v="${v}" class="${v==='rect'?'on':''}">${shapeIcon(v)}${l}</button>`).join('')+
