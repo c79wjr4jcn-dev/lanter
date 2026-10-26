@@ -1,0 +1,10 @@
+LANTER na GitHub Pages – nahratie bez programovania (asi 5 minút)
+
+1. Na github.com sa prihlás (alebo zaregistruj zadarmo).
+2. Vpravo hore „+“ → New repository. Názov napr. lanter. Nechaj „Public“. Create repository.
+3. Na prázdnej stránke repozitára klikni „uploading an existing file“ a pretiahni sem VŠETKY súbory z tohto priečinka
+   (index.html, sw.js, manifest.webmanifest, icon-*.png, .nojekyll, README.md). Dole „Commit changes“.
+4. Settings → Pages → Source: „Deploy from a branch“ → Branch: main, priečinok / (root) → Save.
+5. Po 1–2 minútach sa hore ukáže adresa: https://TVOJE-MENO.github.io/lanter/ – tú posielaj ľuďom.
+
+Aktualizácia aplikácie: v repozitári otvor index.html → ceruzka/„Upload files“ → nahraj nový index.html.

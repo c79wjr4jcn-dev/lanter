@@ -1,0 +1,2 @@
+{"name":"Lanter","short_name":"Lanter","description":"Svetlo z tvojej fotky – lampy a litofánie na 3D tlač","start_url":"./","scope":"./","display":"standalone","background_color":"#141210","theme_color":"#141210","lang":"sk",
+"icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png"},{"src":"icon-512.png","sizes":"512x512","type":"image/png"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}
