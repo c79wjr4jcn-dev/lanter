@@ -647,6 +647,7 @@ body.tips-open .vfoot,body.tips-open .laybar{visibility:hidden}
  <div class="brand"><i class="flame"></i><b>Lanter</b><span>svetlo z tvojej fotky · lampy a litofánie na 3D tlač</span></div>
  <div class="grow"></div>
  <div id="info"></div>
+ <button class="iconbtn" id="shareBtn" title="Poslať ukážku – obrázok alebo video otáčajúceho sa modelu" aria-label="Poslať ukážku"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/></svg></button>
  <button class="iconbtn" id="helpBtn" title="Ako na to – 3 kroky" aria-label="Ako na to">?</button>
  <button class="btn" id="dl" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Stiahnuť STL</span></button>
 </header>
@@ -672,6 +673,7 @@ body.tips-open .vfoot,body.tips-open .laybar{visibility:hidden}
    <input id="prjFile" type="file" accept=".lanter,.json,.3mf,.zip,.stl" hidden>
    <div class="grp" id="phBox"><div class="lbl">Tvoje fotky</div>
     <div class="phlist" id="phList"></div>
+    <div id="perBar" hidden><div class="seg" id="perSeg"><button type="button" data-v="all" class="on">Úpravy pre všetky fotky</button><button type="button" data-v="one">Len pre túto fotku</button></div><div class="perRow"><button type="button" class="btn2" id="perAll">Použiť nastavenie tejto fotky na všetky</button><button type="button" class="btn2" id="perClr">Zrušiť vlastné</button></div><p class="hint" id="perHint"></p></div>
     <details class="more" id="phAdj"><summary>Umiestnenie fotky</summary><div>
     <div class="seg" id="layT" style="margin-top:10px"><button data-v="photo" class="on">Posúvam fotku</button><button data-v="bg">Posúvam pozadie</button><button data-v="txt">Posúvam text</button></div>
     <div class="row"><label>Priblíženie</label><input type="range" id="ph_s" min="0.3" max="3" step="0.01" value="1"></div>
@@ -720,6 +722,7 @@ body.tips-open .vfoot,body.tips-open .laybar{visibility:hidden}
    <div class="phrow"><h2 id="prodName">Tvoj výrobok</h2><button class="lnk" id="prodChange">Zmeniť výrobok</button></div>
    <div class="facts" id="prodFacts"></div>
    <p class="lead">Všetko je nastavené. Ak chceš, uprav detaily nižšie – alebo rovno pokračuj.</p>
+   <div id="perHome"></div>
   </div>
   <!-- 2 POZADIE -->
   <div class="step psec" data-step="bg">
@@ -1069,7 +1072,7 @@ const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
 const state={surf:'flat',shape:'rect',style:'litho',view:'day',enh:null,enhKey:'',img:null,mesh:null,F:null};
 /* photos are layers: each has its own picture, AI mask, brush edits and placement (x,y = shift, s = zoom, r = turn, slot = wall) */
 state.photos=[];state.act=0;state.nextSrcId=0;state.bgT={x:0,y:0,s:1};state.txT={x:0,y:0,s:1};state.layT='photo';
-function newPhoto(){return {src:null,srcId:0,mask:null,maskFor:-1,maskMsg:'',edit:null,editVer:0,report:null,x:0,y:0,s:1,r:0,slot:null,name:''};}
+function newPhoto(){return {ov:{},src:null,srcId:0,mask:null,maskFor:-1,maskMsg:'',edit:null,editVer:0,report:null,x:0,y:0,s:1,r:0,slot:null,name:''};}
 for(const fld of ['src','srcId','mask','maskFor','maskMsg','edit','editVer','report'])
   Object.defineProperty(state,fld,{configurable:true,get(){const ph=state.photos[state.act];return ph?ph[fld]:(fld==='srcId'||fld==='editVer'?0:null);},
     set(v){let ph=state.photos[state.act];if(!ph){ph=newPhoto();state.photos.push(ph);state.act=state.photos.length-1;}ph[fld]=v;}});
@@ -2152,7 +2155,8 @@ function buildField(p){
       if(isImg[kL]&&isImg[kR]){t[kL]=(1-aa)*T0[kL]+aa*T0[kR];t[kR]=(1-aa)*T0[kR]+aa*T0[kL];}}}
   // 3D effect: the person bulges out of the wall (both faces move, the wall keeps its thickness → light stays right)
   let O=null;
-  if(p.d3&&p.d3.rel&&PMg&&!CMODE&&!p._back){const Bm=new Float32Array(n);let any=0;
+  const PMr=p._perRel?(state.pmaskRel?lumGrid(state.pmaskRel,iw,ih,imW,imH,{bri:0,con:1,gam:1,inv:false}):null):PMg;
+  if(p.d3&&(p.d3.rel||p._anyRel)&&PMr&&!CMODE&&!p._back){const PMg=PMr,Bm=new Float32Array(n);let any=0;
     for(let j=0;j<vy;j++)for(let i=0;i<vx;i++){const k=j*vx+i;if(fw>0&&dist[k]<fw)continue;const ii=wrap?i:clamp(Math.round((i*step-fwx)/step),0,iw-1),jj=clamp(Math.round((j*step-fw)/step),0,ih-1);
       const m=PMg[jj*iw+ii];Bm[k]=m>0.5?1:m>0.25?(m-0.25)*4:0;if(Bm[k])any=1;}
     if(any){O=reliefField(Bm,t,vx,vy,step,p,dist,fw,inV,!!prof);}}
@@ -2350,7 +2354,7 @@ let renderer,scene,camera,group,meshObj;
 function initView(){
   const host=$('c3d');
   if(!window.THREE){host.innerHTML='<p style="padding:20px;color:#9a8f82">3D náhľad potrebuje internet (knižnica three.js). Export STL, fotka a nočný náhľad fungujú aj tak.</p>';return;}
-  try{renderer=new THREE.WebGLRenderer({antialias:true});}catch(e){renderer=null;host.innerHTML='<p style="padding:20px;color:#9a8f82">Tento prehliadač nevie zobraziť 3D náhľad (WebGL). Skús Safari alebo Chrome. Fotka, Noc a stiahnutie STL fungujú aj tak.</p>';return;}
+  try{renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});}catch(e){renderer=null;host.innerHTML='<p style="padding:20px;color:#9a8f82">Tento prehliadač nevie zobraziť 3D náhľad (WebGL). Skús Safari alebo Chrome. Fotka, Noc a stiahnutie STL fungujú aj tak.</p>';return;}
   renderer.setPixelRatio(Math.min(2,devicePixelRatio));
   renderer.setClearColor(0x141210);host.appendChild(renderer.domElement);
   renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();state.glLost=true;toast('3D náhľad sa na tomto zariadení vypol (málo pamäte). Skús menší kus alebo väčší krok mriežky; STL sa dá stiahnuť aj tak.');},false);
@@ -3499,7 +3503,7 @@ function compose(p,work){
   const C=document.createElement('canvas');C.width=Tw;C.height=Th;const g=C.getContext('2d');g.imageSmoothingQuality='high';
   g.fillStyle='rgb(250,250,250)';g.fillRect(0,0,Tw,Th);
   if(p.house){composeHouse(p,C,Tw,Th,work);state.compT={Tw,Th};return {img:C,pm:null,imgC:null,bg:null};}
-  const f=p.bg.fill,cut=p.bg.mode!=='keep',globe=p.surf==='sphere'&&p.globe!=='photo';
+  const f=p.bg.fill,cut=p.bg.mode!=='keep'||!!p._anyCut,globe=p.surf==='sphere'&&p.globe!=='photo';
   if(cut&&f==='dark'){g.fillStyle='#000';g.fillRect(0,0,Tw,Th);}
   if(cut&&!globe&&SCENES.includes(f)){
     const S=sceneFor(f,Tw,Th),st=p.bg.sc,Y=new Float32Array(Tw*Th);for(let k=0;k<Y.length;k++)Y[k]=250+(S[k]-250)*st;
@@ -3523,7 +3527,9 @@ function compose(p,work){
     if(CC){BGC=document.createElement('canvas');BGC.width=Tw;BGC.height=Th;BGC.getContext('2d').drawImage(CC,0,0);cg.fillStyle='rgb(250,250,250)';cg.fillRect(0,0,Tw,Th);}}   // front layer: the person on clear (thinnest) wall
   let pm=null,pg=null;
   const WK=rowWarp(p,Th);
-  state.photos.forEach((ph,i)=>{if(!ph.src||(globe&&p.globe==='map'))return;procOf(ph,p,work);const L=layerOf(ph,i,p,multi),T=placeOf(ph,i,p,Tw,Th);
+  let pmR=null,pgR=null;const anyTxt=state.photos.some(q=>q.src&&q.ov&&['tx1','tx2','txSize','txFont','txT'].some(k=>k in q.ov));
+  state.photos.forEach((ph,i)=>{if(!ph.src||(globe&&p.globe==='map'))return;const pp=paramsFor(ph)||p;procOf(ph,pp,work);let L=layerOf(ph,i,pp,multi);const T=placeOf(ph,i,p,Tw,Th);
+    if(pp!==p&&(pp.con!==p.con||pp.bri!==p.bri||pp.gam!==p.gam))L=toneCanvas(L,pp.con/p.con,pp.bri-p.bri,pp.gam/p.gam);   // this photo's own brightness / contrast
     const put=(gg,img)=>{if(!WK){gg.save();if(p.surf==='prism'){const N=p.sides,sw=Tw/N,sl=(((ph.slot==null?i:ph.slot)%N)+N)%N;gg.beginPath();gg.rect(sl*sw,0,sw,Th);gg.clip();}gg.translate(T.cx,T.cy);gg.rotate(T.r);gg.drawImage(img,-T.w/2,-T.h/2,T.w,T.h);gg.restore();return;}
       const D=document.createElement('canvas');D.width=Tw;D.height=Th;const dg=D.getContext('2d');dg.imageSmoothingQuality='high';dg.translate(T.cx,T.cy);dg.rotate(T.r);dg.drawImage(img,-T.w/2,-T.h/2,T.w,T.h);
       const y0=Math.max(0,Math.floor(T.cy-T.h)),y1=Math.min(Th,Math.ceil(T.cy+T.h));
@@ -3533,7 +3539,7 @@ function compose(p,work){
       put(g,ph.dim);}
     const wrapR=['cyl','cone','sphere','lathe'].includes(p.surf)&&p.globe!=='map',put0=put;
     const putW=(gg,img)=>{put0(gg,img);if(!wrapR)return;for(const d of [-Tw,Tw]){if(T.cx-T.w+d<Tw&&T.cx+T.w+d>0){T.cx+=d;put0(gg,img);T.cx-=d;}}};   // round pieces: a photo that crosses the seam continues on the other side
-    const nW=state.photos.filter(q=>q.src).length,share=wrapR&&nW>1&&state.bg==='keep';
+    const nW=state.photos.filter(q=>q.src).length,share=wrapR&&nW>1&&p.bg.mode==='keep'&&!p._anyCut;
     const putS=(gg,img)=>{if(!share){putW(gg,img);return;}   // several photos round a lamp: each fills exactly its share, a short soft join (~3 % of the circumference) – no double exposure
       const D=document.createElement('canvas');D.width=Tw;D.height=Th;const dg=D.getContext('2d');dg.imageSmoothingQuality='high';
       const wS=Tw/nW*1.1,small=T.w<wS||T.h<Th*0.999;
@@ -3556,15 +3562,18 @@ function compose(p,work){
       for(const d of [-Tw,0,Tw]){const L0=T.cx+d-w/2-b/2,R0=T.cx+d+w/2+b/2,gr=wg.createLinearGradient(L0,0,R0,0),f=b/(R0-L0);
         gr.addColorStop(0,first?'#000':'rgba(0,0,0,0)');gr.addColorStop(f,'#000');gr.addColorStop(1-f,'#000');gr.addColorStop(1,last&&nW>1?'rgba(0,0,0,0)':'#000');wg.fillStyle=gr;wg.fillRect(L0,0,R0-L0,Th);}
       dg.globalCompositeOperation='destination-in';dg.drawImage(WM,0,0);gg.drawImage(D,0,0);};
-    putS(g,share?(ph.proc||L):L);if(cg)putS(cg,layerColor(ph));
+    putS(g,share&&pp===p?(ph.proc||L):L);if(cg)putS(cg,layerColor(ph));
     if(ph.mask&&ph.maskFor===ph.srcId){   // where the people are (motif "behind", stencil hairlines, ring centre)
       if(!pm){pm=document.createElement('canvas');pm.width=Tw;pm.height=Th;pg=pm.getContext('2d');pg.fillStyle='#000';pg.fillRect(0,0,Tw,Th);}
       {const fe=layFeather(p),pk=ph.maskFor+'|'+multi+'|'+fe.join(',');
         if(!ph.pmC||ph.pmFor!==pk){const S=ph.mask,R=multi?featherRect(S.w,S.h,fe[0],fe[1]):null;ph.pmC=grayCanvas(S.M.map((v,q)=>v*(R?R[q]:1)*255),S.w,S.h);ph.pmFor=pk;}}
-      pg.globalCompositeOperation='lighten';putW(pg,ph.pmC);}
+      pg.globalCompositeOperation='lighten';putW(pg,ph.pmC);
+      if(pp.d3&&pp.d3.rel){if(!pmR){pmR=document.createElement('canvas');pmR.width=Tw;pmR.height=Th;pgR=pmR.getContext('2d');pgR.fillStyle='#000';pgR.fillRect(0,0,Tw,Th);}pgR.globalCompositeOperation='lighten';putW(pgR,ph.pmC);}}   // relief only for photos that have it on
   });
   applyLook(p,C,CC,BG,BGC,pm,Tw,Th);if(p.look==='rhouse')drawRoundHouse(p,C,Tw,Th);
-  drawText(p,C,CC,Tw,Th);
+  if(!anyTxt)drawText(p,C,CC,Tw,Th);
+  else{const rnd=['cyl','cone','sphere','lathe'].includes(p.surf);state.photos.forEach((ph,i)=>{if(!ph.src)return;const pp=paramsFor(ph)||p;if(!pp.text)return;const T=placeOf(ph,i,p,Tw,Th),p0=state.photos[0],cx0=p0&&p0.proc&&p.surf!=='flat'?placeOf(p0,0,p,Tw,Th).cx:Tw/2,base=(T.cx-cx0)/Tw;   // each photo its own text, under that photo
+      for(const d of rnd?[-1,0,1]:[0]){const tt=Object.assign({},pp.text,{dx:(pp.text.dx||0)+base+d,plain:false});drawText(Object.assign({},pp,{text:tt}),C,CC,Tw,Th);}});}
   if(BG&&pm){   // the back layer is clear where the person stands (a little wider), so nothing of the background shines through the face; a bit smaller than the person, so no bright rim appears around the head
     const pd=pm.getContext('2d').getImageData(0,0,Tw,Th).data,n=Tw*Th,Mk=new Float32Array(n);for(let q=0;q<n;q++)Mk[q]=clamp((pd[4*q]-40)/170,0,1);
     const Mb=gauss(Mk,Tw,Th,Math.max(1,Math.max(Tw,Th)*0.004));
@@ -3572,7 +3581,7 @@ function compose(p,work){
       for(let q=0;q<n;q++){const m=clamp((Mb[q]-0.72)*4,0,1);if(m>0)for(let a=0;a<3;a++)d[4*q+a]=d[4*q+a]+(250-d[4*q+a])*m;}cx.putImageData(im,0,0);}}
   if(p.orn)for(const cv of [C,CC,pm]){if(!cv)continue;const t=document.createElement('canvas');t.width=cv.width;t.height=cv.height;const tg=t.getContext('2d');tg.translate(t.width,0);tg.scale(-1,1);tg.drawImage(cv,0,0);const cg=cv.getContext('2d');cg.clearRect(0,0,cv.width,cv.height);cg.drawImage(t,0,0);}   // ball: the plate is seen from its flat side
   state.compT={Tw,Th};
-  return {img:C,pm,imgC:CC,bg:BG,bgC:BGC};
+  return {img:C,pm,pmR,imgC:CC,bg:BG,bgC:BGC};
 }
 // ---------- styles of the picture (applied to the composed picture; brightness = light that comes through)
 function compMM(p,Tw){const fw=p.frameOn?p.fw:0;let Wd=p.W*(p.surf==='prism'?p.sides:1);if(LATHE.includes(p.surf)){const P=latheProfile(p);Wd=2*Math.PI*P.Rmax;}else if(p.surf==='flat'||p.surf==='arc')Wd=p.W-2*fw;return Tw/Math.max(1,Wd);}   // pixels per mm
@@ -3704,8 +3713,8 @@ function blurDim(cv,s){const g=cv.getContext('2d'),w=cv.width,h=cv.height,im=g.g
 function ensureEnhanced(p,fast){
   const work=fast?Math.min(700,workSize(p)):workSize(p);
   const key=JSON.stringify([p.look,p.text||null,p.house||null,p.d3.dof?p.d3.ds:0,p.d3.lay&&d3Ok(p).lay,p.cmode!=='mono',p.globe,p.holeB,p.holeT,p.W,p.H,state.latheId||0,landImg.complete,p.e,work,p.bg,p.surf,p.sides,Math.round(imgAspect(p)*1000),state.bgT,p.bg.fill==='photo'?state.bgPhotoId||0:0,
-    state.photos.map(ph=>[ph.srcId,ph.maskFor,ph.editVer,ph.x,ph.y,ph.s,ph.r,ph.slot])]);
-  if(key!==state.enhKey){let C;state.fastComp=!!(fast||p.draftLo);try{C=compose(p,work);}finally{state.fastComp=false;}state.enh=C.img;state.imgC=C.imgC;state.pmask=C.pm;state.bgImg=C.bg||null;state.bgImgC=C.bgC||null;state.enhKey=key;drawCompare();}
+    state.photos.map(ph=>[ph.srcId,ph.maskFor,ph.editVer,ph.x,ph.y,ph.s,ph.r,ph.slot,ph.ov||null])]);
+  if(key!==state.enhKey){let C;state.fastComp=!!(fast||p.draftLo);try{C=compose(p,work);}finally{state.fastComp=false;}state.enh=C.img;state.imgC=C.imgC;state.pmask=C.pm;state.pmaskRel=C.pmR||null;state.bgImg=C.bg||null;state.bgImgC=C.bgC||null;state.enhKey=key;drawCompare();}
   state.img=state.enh;
 }
 function rebuild(draft){
@@ -4318,7 +4327,7 @@ function projectData(){
   const ph0=state.photos[0];
   return {app:'Lanter',ver:1,date:new Date().toISOString(),name:(ph0&&ph0.name)||'Projekt',v,
     seg:{surf:state.surf,shape:state.shape,style:state.style,look:state.look||'litho',hN:state.hN||'5',hStyle:state.hStyle||'chalet',hRoof:state.hRoof||'remov',hType:state.hType||'house',bg:state.bg,cmode:state.cmode||'mono'},stack:state.stack||null,bgT:Object.assign({},state.bgT),txT:Object.assign({},state.txT||{x:0,y:0}),act:state.act,userPhoto:!!state.userPhoto,
-    photos:state.photos.map(ph=>({src:ph.src?cURL(ph.src):null,name:ph.name||'',x:ph.x,y:ph.y,s:ph.s,r:ph.r,slot:ph.slot,
+    photos:state.photos.map(ph=>({src:ph.src?cURL(ph.src):null,name:ph.name||'',x:ph.x,y:ph.y,s:ph.s,r:ph.r,slot:ph.slot,ov:ph.ov||null,
       mask:ph.mask&&ph.maskFor===ph.srcId&&ph.mask.M?{w:ph.mask.w,h:ph.mask.h,none:!!ph.mask.none,png:maskURL(ph.mask)}:null,maskMsg:ph.maskMsg||'',
       edit:ph.edit&&ph.edit.used?cURL(ph.edit.c,true):null})),
     bgPhoto:state.bgPhoto?cURL(state.bgPhoto):null,customShape:state.customShape||null,latheShape:state.latheShape||null,customMotif:state.customMotif?cURL(state.customMotif,true):null};}
@@ -4339,7 +4348,7 @@ async function applyProject(P){
     state.customMotif=P.customMotif?canvasFrom(await loadImg(P.customMotif),600):null;
     const mk=$('m_kind').value;state.motif=mk==='none'||(mk==='custom'&&!state.customMotif)?null:prepMotif(mk);if(mk==='custom'&&!state.customMotif)$('m_kind').value='none';
     const list=[];
-    for(const q of P.photos){const ph=newPhoto();Object.assign(ph,{x:+q.x||0,y:+q.y||0,s:q.s==null?1:+q.s,r:+q.r||0,slot:q.slot==null?null:q.slot,name:q.name||''});
+    for(const q of P.photos){const ph=newPhoto();Object.assign(ph,{x:+q.x||0,y:+q.y||0,s:q.s==null?1:+q.s,r:+q.r||0,slot:q.slot==null?null:q.slot,name:q.name||'',ov:q.ov&&typeof q.ov==='object'?q.ov:{}});
       if(q.src){ph.src=canvasFrom(await loadImg(q.src),2400);ph.srcId=++state.nextSrcId;ph.report=analyze(ph.src);}
       if(q.mask&&q.mask.png){const mi=await loadImg(q.mask.png),c=document.createElement('canvas');c.width=q.mask.w;c.height=q.mask.h;const g=c.getContext('2d');g.drawImage(mi,0,0,c.width,c.height);
         const d=g.getImageData(0,0,c.width,c.height).data,M=new Float32Array(c.width*c.height);for(let i=0;i<M.length;i++)M[i]=d[4*i]/255;
@@ -4658,6 +4667,148 @@ document.addEventListener('keydown',e=>{if(state.view!=='photo'||e.metaKey||e.ct
   const zb=document.getElementById('zoomBar');if(!zb)return;const map={ArrowLeft:'[data-mx="-1"]',ArrowRight:'[data-mx="1"]',ArrowUp:'[data-my="-1"]',ArrowDown:'[data-my="1"]','+':'[data-z="1"]','=':'[data-z="1"]','-':'[data-z="-1"]','[':'[data-r="-1"]',']':'[data-r="1"]'};
   const q=map[e.key];if(!q)return;const b=zb.querySelector(q);if(!b)return;e.preventDefault();if(a&&a.type==='range')a.blur();
   b.dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:e.shiftKey}));});
+const VIEWER_HTML=`<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><title>Lanter – 3D ukážka</title>
+<style>html,body{margin:0;height:100%;color:#f3e6d3;font:15px system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none;background:#0f0c09}
+body.lit{background:radial-gradient(circle at 50% 46%,#3a2a1a 0,#17110b 38%,#0f0c09 70%)}body.night{background:radial-gradient(circle at 50% 46%,#3d2812 0,#0a0705 40%,#030202 72%)}body.day{background:radial-gradient(circle at 50% 40%,#4a4136 0,#2a241e 60%)}
+#c{position:fixed;inset:0;width:100%;height:100%}header{position:fixed;top:0;left:0;right:0;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;display:flex;align-items:baseline;gap:10px;pointer-events:none}header b{font-size:18px}header span{color:#b8a58f;font-size:13px}
+.seg{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));display:flex;gap:4px;padding:4px;border-radius:999px;background:rgba(29,24,19,.9);border:1px solid #4a3d30}.seg button{border:0;border-radius:999px;padding:10px 18px;background:transparent;color:#d9c9b4;font:600 14px system-ui;cursor:pointer}.seg button.on{background:#eba65b;color:#1a1410}
+p.h{position:fixed;left:0;right:0;bottom:calc(76px + env(safe-area-inset-bottom));text-align:center;margin:0;color:#8f8272;font-size:12.5px;pointer-events:none}
+#msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;line-height:1.5;font-size:16px;background:#0f0c09}</style></head>
+<body class="lit"><canvas id="c"></canvas><header><b>Lanter</b><span id="nm">3D ukážka</span></header><p class="h">Ťahaj = otáčaj · 2 prsty / koliesko = priblíž</p><div class="seg"><button data-v="day">Deň</button><button data-v="lit" class="on">Svieti</button><button data-v="night">Noc</button></div>
+<div id="msg">Načítavam 3D model…<br><br><small style="color:#9a8f82">Ak sa nič nedeje: tento súbor otvor v prehliadači (Safari / Chrome), nie v náhľade správy alebo v Súboroch.<br>Na iPhone: podrž súbor → Zdieľať → otvor v Safari, alebo ho pošli na e-mail a otvor tam.</small></div>
+<script>
+(async function(){
+const msg=document.getElementById('msg');
+try{
+let D=__DATA__;
+if('__ENC__'==='gz'){if(!window.DecompressionStream)throw new Error('Tento prehliadač je starý – otvor v novom Chrome / Safari.');const b=atob(D),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);D=JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text());}
+document.getElementById('nm').textContent=D.name;
+const ub=s=>{const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;};
+const deq=s=>{const u=new Uint16Array(ub(s).buffer),o=new Float32Array(u.length);for(let k=0;k<u.length;k++){const a=k%3;o[k]=D.mn[a]+u[k]/65535*(D.mx[a]-D.mn[a]);}return o;};
+const Pd=deq(D.pd),Pl=D.pl?deq(D.pl):Pd,I=new Uint32Array(ub(D.ix).buffer),c8=ub(D.c),n=Pd.length/3;
+let cx=0,cy=0,cz=0;{let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];for(let k=0;k<n;k++)for(let a=0;a<3;a++){const v=Pd[3*k+a];if(v<mn[a])mn[a]=v;if(v>mx[a])mx[a]=v;}cx=(mn[0]+mx[0])/2;cy=(mn[1]+mx[1])/2;cz=(mn[2]+mx[2])/2;}
+let R=0;for(let k=0;k<n;k++){const d=Math.hypot(Pd[3*k]-cx,Pd[3*k+1]-cy,Pd[3*k+2]-cz);if(d>R)R=d;}
+const normals=P=>{const N=new Float32Array(P.length);for(let t=0;t<I.length;t+=3){const a=I[t]*3,b=I[t+1]*3,c=I[t+2]*3,ux=P[b]-P[a],uy=P[b+1]-P[a+1],uz=P[b+2]-P[a+2],vx=P[c]-P[a],vy=P[c+1]-P[a+1],vz=P[c+2]-P[a+2],nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;for(const q of [a,b,c]){N[q]+=nx;N[q+1]+=ny;N[q+2]+=nz;}}for(let k=0;k<N.length;k+=3){const l=Math.hypot(N[k],N[k+1],N[k+2])||1;N[k]/=l;N[k+1]/=l;N[k+2]/=l;}return N;};
+const cv=document.getElementById('c');let gl=cv.getContext('webgl2',{antialias:true,alpha:true,premultipliedAlpha:false}),v2=!!gl;
+if(!gl){gl=cv.getContext('webgl',{antialias:true,alpha:true,premultipliedAlpha:false})||cv.getContext('experimental-webgl');if(!gl)throw new Error('Tento prehliadač nevie zobraziť 3D (WebGL).');if(!gl.getExtension('OES_element_index_uint'))throw new Error('Tento prehliadač nevie zobraziť veľký 3D model.');}
+const sh=(t,src)=>{const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,'attribute vec3 p;attribute vec3 nm;attribute vec3 col;uniform mat4 M,P;varying vec3 vC,vN,vV;void main(){vec4 w=M*vec4(p,1.0);vV=-w.xyz;vN=mat3(M)*nm;vC=col;gl_Position=P*w;}'));
+gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,'precision mediump float;varying vec3 vC,vN,vV;uniform float uK,uDay;void main(){vec3 n=normalize(vN),v=normalize(vV);float c=abs(dot(n,v));vec3 lit=vC*mix(1.0-uK,1.0,sqrt(c));vec3 L=normalize(vec3(-0.5,0.6,0.8));float d=abs(dot(n,L));vec3 day=vec3(0.925,0.894,0.84)*(0.42+0.6*d);gl_FragColor=vec4(mix(lit,day,uDay),1.0);}'));
+gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(pr));gl.useProgram(pr);
+const buf=(arr,loc,sz,norm,type)=>{const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.STATIC_DRAW);return ()=>{gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,sz,type||gl.FLOAT,!!norm,0,0);};};
+const lp=gl.getAttribLocation(pr,'p'),ln=gl.getAttribLocation(pr,'nm'),lc=gl.getAttribLocation(pr,'col');
+const posD=buf(Pd,lp,3),posL=Pl===Pd?posD:buf(Pl,lp,3),Nd=normals(Pd),nD=buf(Nd,ln,3),nL=Pl===Pd?nD:buf(normals(Pl),ln,3),colB=buf(c8,lc,3,true,gl.UNSIGNED_BYTE);
+const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,I,gl.STATIC_DRAW);
+const uM=gl.getUniformLocation(pr,'M'),uP=gl.getUniformLocation(pr,'P'),uK=gl.getUniformLocation(pr,'uK'),uDay=gl.getUniformLocation(pr,'uDay');
+gl.enable(gl.DEPTH_TEST);gl.clearColor(0,0,0,0);
+const mul=(a,b)=>{const o=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s;}return o;};
+const rX=t=>new Float32Array([1,0,0,0,0,Math.cos(t),Math.sin(t),0,0,-Math.sin(t),Math.cos(t),0,0,0,0,1]),rY=t=>new Float32Array([Math.cos(t),0,-Math.sin(t),0,0,1,0,0,Math.sin(t),0,Math.cos(t),0,0,0,0,1]),tr=(x,y,z)=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1]);
+let mode='lit',z=R*3.4,rx=0.05,ry=0,asp=1;
+const persp=()=>{const f=1/Math.tan(35*Math.PI/360),nr=R*0.2,fr=R*40;return new Float32Array([f/asp,0,0,0,0,f,0,0,0,0,(fr+nr)/(nr-fr),-1,0,0,2*fr*nr/(nr-fr),0]);};
+const draw=()=>{gl.viewport(0,0,cv.width,cv.height);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  const M=mul(tr(0,0,-z),mul(rX(rx),mul(rY(ry),tr(-cx,-cy,-cz))));gl.uniformMatrix4fv(uM,false,M);gl.uniformMatrix4fv(uP,false,persp());
+  gl.uniform1f(uK,D.uk||0);gl.uniform1f(uDay,mode==='day'?1:0);(mode==='day'?posD:posL)();(mode==='day'?nD:nL)();colB();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.drawElements(gl.TRIANGLES,I.length,gl.UNSIGNED_INT,0);};
+const size=()=>{const d=Math.min(2,devicePixelRatio||1);cv.width=innerWidth*d;cv.height=innerHeight*d;asp=innerWidth/innerHeight;if(asp<0.8)z=Math.max(z,R*3.4/asp*0.8);draw();};addEventListener('resize',size);
+const setMode=v=>{mode=v;document.body.className=v;document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));draw();};
+document.querySelector('.seg').onclick=e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.v);};
+const pts=new Map();let pin=0,auto=true;
+cv.addEventListener('pointerdown',e=>{auto=false;cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===2){const[a,b]=[...pts.values()];pin=Math.hypot(a[0]-b[0],a[1]-b[1]);}});
+cv.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;const o=pts.get(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+  if(pts.size===2){const[a,b]=[...pts.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pin)z=Math.min(R*12,Math.max(R*1.2,z*pin/d));pin=d;}else{ry+=(e.clientX-o[0])*0.01;rx=Math.max(-1.3,Math.min(1.3,rx+(e.clientY-o[1])*0.01));}draw();});
+const up=e=>{pts.delete(e.pointerId);pin=0;};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('wheel',e=>{e.preventDefault();auto=false;z=Math.min(R*12,Math.max(R*1.2,z*(e.deltaY>0?1.1:0.9)));draw();},{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault());
+msg.remove();size();setMode('lit');const t0=performance.now();(function a(){if(auto){ry=Math.sin((performance.now()-t0)/2600)*0.6;draw();requestAnimationFrame(a);}})();
+}catch(err){msg.innerHTML='3D ukážku sa nepodarilo otvoriť.<br><small style="color:#9a8f82">'+(err&&err.message||err)+'<br><br>Skús ju otvoriť v aktuálnom Chrome alebo Safari.</small>';}
+})();
+<\/script></body></html>
+`;
+/* share a preview: picture of the current view, or a short video of the turning model (lit / night) */
+(()=>{const st=document.createElement('style');st.textContent='#shareMenu{position:fixed;z-index:9998;min-width:260px;padding:8px;border-radius:16px;border:1px solid #6b5a45;background:#1d1813;box-shadow:0 18px 40px -12px rgba(0,0,0,.7);display:none;flex-direction:column;gap:6px}#shareMenu.on{display:flex}#shareMenu button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;border-radius:11px;border:1px solid transparent;background:transparent;color:#f3e6d3;font:600 14px system-ui;cursor:pointer}#shareMenu button:hover{background:rgba(235,166,91,.1);border-color:#6b5a45}#shareMenu small{font-weight:500;color:#b8a58f;font-size:12px}#shareMenu p{margin:4px 6px 2px;color:#9a8f82;font:500 11.5px system-ui;line-height:1.35}';document.head.appendChild(st);
+  const m=document.createElement('div');m.id='shareMenu';m.innerHTML='<button type="button" data-s="3d">3D ukážka – dá sa otáčať<small>súbor .html: otvorí sa v prehliadači, prstom / myšou točíš, prepínaš Deň · Svieti · Noc</small></button><button type="button" data-s="img">Obrázok – tento pohľad<small>PNG presne ako vidíš (3D, 3D svieti alebo Noc)</small></button><button type="button" data-s="night">Obrázok – Noc<small>model svieti v tmavej izbe</small></button><button type="button" data-s="vid">Video – model sa otáča<small>6 s dookola, pošleš cez WhatsApp / e-mail</small></button><p>Ukážka sa uloží alebo otvorí zdieľanie. Fotka ani model neodchádzajú nikam, kým ich sám nepošleš.</p>';document.body.appendChild(m);
+  const btn=$('shareBtn');btn.addEventListener('click',e=>{e.stopPropagation();if(!state.mesh){toast('Najprv nahraj fotku – ukážka sa robí z hotového modelu.');return;}const r=btn.getBoundingClientRect();m.style.top=(r.bottom+8)+'px';m.style.right=Math.max(8,innerWidth-r.right)+'px';m.classList.toggle('on');});
+  document.addEventListener('click',e=>{if(!m.contains(e.target))m.classList.remove('on');});
+  const nameOf=ext=>'Lanter_ukazka_'+(uiName?uiName():'model').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_')+'.'+ext;
+  async function deliver(blob,name,type){const f=new File([blob],name,{type});
+    try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Lanter – ukážka',text:'Pozri, čo z fotky vytlačím 🙂'});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),8000);toast('Ukážka uložená ('+name+') – pošli ju kamarátovi ako prílohu.');}
+  async function viewerHTML(){   // lighter copy of the model (0,4 mm grid) + its lit colours, packed into one small web page
+    const p=params(),old=state.view;clearTimeout(timer);timer=null;p.res=Math.max(0.5,p.res);p.resFull=p.res;
+    let G;try{doBuild(p,false);G=meshObj.geometry;
+      const P=(state.posLit&&old!=='day'?state.posLit:G.attributes.position).array,Pd=G.attributes.position.array,I=(state.idxLit||G.index).array,C=G.attributes.color.array,n=P.length/3;
+      let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];for(let k=0;k<n;k++)for(let a=0;a<3;a++){const v=Pd[3*k+a];if(v<mn[a])mn[a]=v;if(v>mx[a])mx[a]=v;}
+      const q=A=>{const o=new Uint16Array(A.length);for(let k=0;k<A.length;k++){const a=k%3;o[k]=Math.round((A[k]-mn[a])/Math.max(1e-6,mx[a]-mn[a])*65535);}return o;};
+      const c8=new Uint8Array(C.length);for(let k=0;k<C.length;k++)c8[k]=Math.round(Math.min(1,Math.max(0,C[k]))*255);
+      const b64=u=>{const b=new Uint8Array(u.buffer,u.byteOffset,u.byteLength);let s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode.apply(null,b.subarray(i,i+32768));return btoa(s);};
+      const flat=P!==Pd,D={mn,mx,pd:b64(q(Pd)),pl:flat?b64(q(P)):'',ix:b64(new Uint32Array(I)),c:b64(c8),name:uiName?uiName():'Lanter',uk:(state.matLit&&state.matLit.uniforms&&state.matLit.uniforms.uK)?state.matLit.uniforms.uK.value:0.25};
+      let js=JSON.stringify(D),enc='';if(window.CompressionStream){try{const z=await new Response(new Blob([js]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();js=JSON.stringify(b64(new Uint8Array(z)));enc='gz';}catch(e){}}
+      return VIEWER_HTML.replace('__ENC__',enc).replace('__DATA__',js);}
+    finally{later(30);}}
+  const shot=()=>new Promise(res=>{draw();renderer.domElement.toBlob(b=>res(b),'image/png');});
+  async function withView(v,fn){const old=state.view;if(v&&old!==v){setView(v);await new Promise(r=>setTimeout(r,350));}try{return await fn();}finally{if(v&&old!==v)setView(old);}}
+  m.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;m.classList.remove('on');const k=b.dataset.s;
+    try{if(k==='3d'){busyMsg('Pripravujem 3D ukážku…');$('busy').style.display='block';await new Promise(r=>setTimeout(r,30));
+        const html=await viewerHTML();$('busy').style.display='none';deliver(new Blob([html],{type:'text/html'}),nameOf('html'),'text/html');}
+      else if(k==='img'){if(state.view==='photo'){await withView('lit',async()=>deliver(await shot(),nameOf('png'),'image/png'));}else deliver(await shot(),nameOf('png'),'image/png');}
+      else if(k==='night'){await withView('night',async()=>{if(!night3d()){toast('Noc s motívom je 2D náhľad – vypni motív alebo použi 3D svieti.');return;}deliver(await shot(),nameOf('png'),'image/png');});}
+      else if(k==='vid'){const c=renderer.domElement;if(!c.captureStream||!window.MediaRecorder){toast('Tento prehliadač nevie nahrať video – použi obrázok.');return;}
+        const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'],mt=types.find(t=>MediaRecorder.isTypeSupported(t))||'';
+        await withView(['day','lit','night'].includes(state.view)?null:'lit',async()=>{const st=c.captureStream(30),rec=new MediaRecorder(st,mt?{mimeType:mt,videoBitsPerSecond:6e6}:undefined),ch=[];rec.ondataavailable=ev=>{if(ev.data.size)ch.push(ev.data);};
+          const r0=group.rotation.y,T=6000,t0=performance.now();busyMsg('Nahrávam video… 0 %');$('busy').style.display='block';rec.start();
+          await new Promise(done=>{const step=()=>{const t=(performance.now()-t0)/T;group.rotation.y=r0+Math.min(1,t)*Math.PI*2;draw();busyMsg('Nahrávam video… '+Math.min(100,Math.round(t*100))+' %');if(t<1)requestAnimationFrame(step);else done();};requestAnimationFrame(step);});
+          await new Promise(r=>{rec.onstop=r;rec.stop();});group.rotation.y=r0;draw();$('busy').style.display='none';
+          const type=(rec.mimeType||mt||'video/webm').split(';')[0];deliver(new Blob(ch,{type}),nameOf(type.includes('mp4')?'mp4':'webm'),type);});}}
+    catch(err){console.error(err);$('busy').style.display='none';toast('Ukážku sa nepodarilo vytvoriť.');}});})();
+/* ---- settings per photo: Pozadie, Obraz (jas/kontrast/ostrosť), Text, Vystúpená tvár ---- */
+const PER_IDS=['e_on','e_cast','e_lev','e_scr','e_den','e_cla','e_gla','e_sha','con','bri','gam','tx1','tx2','txSize','txFont','d3Rel'];
+state.perOne=false;state.gv=null;
+function ctlGet(id){const e=$(id);return e?(e.type==='checkbox'?e.checked:e.value):undefined;}
+function ctlSet(id,v){const e=$(id);if(!e||v===undefined)return;if(e.type==='checkbox')e.checked=!!v;else e.value=v;}
+function snapVals(){const o={};PER_IDS.forEach(id=>o[id]=ctlGet(id));o.bg=state.bg;o.txT=JSON.parse(JSON.stringify(state.txT||{x:0,y:0,s:1}));return o;}
+function applyVals(o){PER_IDS.forEach(id=>{if(id in o)ctlSet(id,o[id]);});if('bg' in o)state.bg=o.bg;if('txT' in o&&o.txT)state.txT=JSON.parse(JSON.stringify(o.txT));}
+const params0=params;
+function paramsWith(v){const keep=snapVals();applyVals(v);try{return params0();}finally{applyVals(keep);}}
+function hasOv(ph){return !!(ph&&ph.ov&&Object.keys(ph.ov).length);}
+params=function(){const p=state.perOne&&state.gv?paramsWith(state.gv):params0();
+  const ovs=state.photos.filter(hasOv);if(ovs.length){const base=state.perOne&&state.gv?state.gv:null;
+    p._anyCut=p.bg.mode==='keep'&&ovs.some(ph=>ph.ov.bg&&ph.ov.bg!=='keep');if(p._anyCut){const m=ovs.find(ph=>ph.ov.bg&&ph.ov.bg!=='keep').ov.bg;p.bg=Object.assign({},p.bg);p.bgAny=m;}
+    const relOf=ph=>ph.ov&&('d3Rel' in ph.ov)?!!ph.ov.d3Rel:(base?!!base.d3Rel:!!ctlGet('d3Rel'));p._perRel=ovs.some(ph=>'d3Rel' in ph.ov);p._anyRel=state.photos.some(ph=>ph.src&&relOf(ph));}
+  return p;};
+function paramsFor(ph){if(!hasOv(ph))return null;const base=state.perOne&&state.gv?state.gv:snapVals();return paramsWith(Object.assign({},base,ph.ov));}
+function toneCanvas(L,c,b,g){if(Math.abs(c-1)<1e-3&&Math.abs(b)<1e-3&&Math.abs(g-1)<1e-3)return L;const o=document.createElement('canvas');o.width=L.width;o.height=L.height;const x=o.getContext('2d');x.drawImage(L,0,0);
+  const im=x.getImageData(0,0,o.width,o.height),d=im.data;for(let k=0;k<d.length;k+=4)for(let a=0;a<3;a++){let v=d[k+a]/255;v=clamp((v+b-0.5)*c+0.5,0,1);v=Math.pow(v,1/g);d[k+a]=v*255;}x.putImageData(im,0,0);return o;}
+(()=>{const st=document.createElement('style');st.textContent='#perBar{margin:10px 0 4px;display:flex;flex-direction:column;gap:8px}#perBar .seg{display:flex}#perBar .seg button{flex:1;font-size:12.5px}.perRow{display:flex;gap:6px;flex-wrap:wrap}.perRow .btn2{flex:1;font-size:12px;min-height:34px}#perHint{margin:0;font-size:12px}body.perone #panel .acc,body.perone #panel details{}#phList button.own::after{content:"★";position:absolute;top:3px;right:5px;color:var(--accent);font-size:13px;text-shadow:0 0 3px #000}#phList button{position:relative}';document.head.appendChild(st);
+  const bar=$('perBar'),segE=$('perSeg');let lastAct=-1;
+  const showSeg=v=>{[...segE.querySelectorAll('button')].forEach(b=>b.classList.toggle('on',b.dataset.v===v));};
+  const bgSeg=()=>{const b=$('bgMode').querySelector(`[data-v="${state.bg}"]`);if(b)[...$('bgMode').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b));};
+  const refreshUI=()=>{try{document.querySelectorAll('#panel input[type=range]').forEach(rangeFill);}catch(e){}bgSeg();try{syncUI();}catch(e){}};
+  const loadAct=()=>{if(!state.perOne)return;applyVals(Object.assign({},state.gv,(actPh()||{}).ov||{}));refreshUI();};
+  const hint=()=>{const n=state.photos.filter(q=>q.src).length;bar.hidden=n<2;const ph=actPh(),k=state.act+1;
+    $('perHint').textContent=state.perOne?`Upravuješ len fotku ${k}: pozadie, obraz (jas, kontrast, ostrosť), text a vystúpenú tvár. Ostatné fotky sa nemenia.`:(state.photos.some(hasOv)?'Fotky so ★ majú vlastné nastavenie.':'Pozadie, obraz, text a vystúpená tvár platia pre všetky fotky.');
+    $('perClr').hidden=!hasOv(ph);};
+  window.perHint=hint;
+  segE.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const one=b.dataset.v==='one';if(one===state.perOne)return;
+    if(one){state.gv=snapVals();state.perOne=true;document.body.classList.add('perone');loadAct();}
+    else{applyVals(state.gv);state.gv=null;state.perOne=false;document.body.classList.remove('perone');refreshUI();}
+    showSeg(b.dataset.v);hint();});
+  const record=id=>{if(!state.perOne)return;const ph=actPh();if(!ph)return;ph.ov=ph.ov||{};ph.ov[id]=id==='bg'?state.bg:id==='txT'?JSON.parse(JSON.stringify(state.txT)):ctlGet(id);hint();markOwn();state.enhKey='';};
+  const onEdit=e=>{const id=e.target&&e.target.id;if(PER_IDS.includes(id))record(id);};
+  document.addEventListener('input',onEdit,true);document.addEventListener('change',onEdit,true);
+  $('bgMode').addEventListener('click',()=>setTimeout(()=>{record('bg');later(30);},0),true);
+  const _lc2=layoutChanged;layoutChanged=function(){if(state.perOne&&state.layT==='txt')record('txT');return _lc2.apply(this,arguments);};
+  const markOwn=()=>{document.querySelectorAll('#phList button[data-i]').forEach(b=>{const q=state.photos[+b.dataset.i];b.classList.toggle('own',hasOv(q));});};
+  const _rp2=renderPhotos;renderPhotos=function(){const r=_rp2.apply(this,arguments);if(state.act!==lastAct){lastAct=state.act;loadAct();}markOwn();hint();return r;};
+  $('perAll').addEventListener('click',()=>{const ph=actPh();if(!ph)return;const base=state.perOne?state.gv:snapVals(),E=Object.assign({},base,ph.ov||{});
+    state.photos.forEach(q=>q.ov={});if(state.perOne)state.gv=E;applyVals(E);refreshUI();markOwn();hint();state.enhKey='';later(30);toast('Nastavenie fotky '+(state.act+1)+' teraz platí pre všetky fotky.');});
+  $('perClr').addEventListener('click',()=>{const ph=actPh();if(!ph)return;ph.ov={};loadAct();markOwn();hint();state.enhKey='';later(30);toast('Fotka '+(state.act+1)+' znova používa spoločné nastavenie.');});
+  const strip=document.createElement('div');strip.id='perStrip';bar.insertBefore(strip,bar.firstChild);
+  const st2=document.createElement('style');st2.textContent='#perStrip{display:none;gap:6px;overflow-x:auto}#perHome #perStrip{display:flex}#perStrip button{flex:0 0 52px;height:52px;border-radius:10px;border:2px solid transparent;background-size:cover;background-position:center;position:relative;cursor:pointer}#perStrip button.on{border-color:var(--accent)}#perStrip button i{position:absolute;left:3px;bottom:2px;font:700 11px system-ui;color:#fff;text-shadow:0 0 3px #000;font-style:normal}#perStrip button.own::after{content:"★";position:absolute;top:2px;right:4px;color:var(--accent);font-size:12px;text-shadow:0 0 3px #000}#perHome #perBar{padding:12px;border:1px solid var(--line);border-radius:16px;margin:4px 0 14px}';document.head.appendChild(st2);
+  const fillStrip=()=>{strip.innerHTML=state.photos.map((q,i)=>{if(!q.src)return '';let u='';try{u=canvasFrom(q.src,90).toDataURL('image/jpeg',0.6);}catch(e){}return `<button type="button" data-i="${i}" class="${i===state.act?'on':''}${hasOv(q)?' own':''}" style="background-image:url(${u})"><i>${i+1}</i></button>`;}).join('');};
+  strip.addEventListener('click',e=>{const b=e.target.closest('button[data-i]');if(!b)return;state.act=+b.dataset.i;renderPhotos();});
+  const place=()=>{const inProd=state.step&&state.step!=='photo',home=inProd?$('perHome'):$('phList').parentNode;if(inProd){if(bar.parentNode!==home)home.appendChild(bar);}else if(bar.previousElementSibling!==$('phList'))$('phList').after(bar);fillStrip();};
+  const _gs2=goStep;goStep=function(){const r=_gs2.apply(this,arguments);try{place();}catch(e){}return r;};
+  const _rp3=renderPhotos;renderPhotos=function(){const r=_rp3.apply(this,arguments);try{fillStrip();}catch(e){}return r;};
+  place();hint();})();
 /* phone: full-screen model (hides the title bar and the sheet) */
 (()=>{const st=document.createElement('style');st.textContent='.fsbtn{display:none}@media (max-width:600px){.fsbtn{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:12px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid var(--line2,#555);background:rgba(20,16,12,.72);color:var(--accent);font:700 20px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm header.top{display:none}body.fsm #panel{border:0;overflow:hidden;padding:0}body.fsm .stagewrap{border-radius:0}#fsInfo,#fsDim{display:none}body.fsm #fsInfo{display:flex;flex-wrap:wrap;gap:6px;position:absolute;left:12px;right:112px;bottom:68px;z-index:5;pointer-events:none}body.fsm.fsnodim #fsInfo{display:none}body.fsm #fsDim{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:68px;z-index:6;height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--accent);background:rgba(20,16,12,.8);color:var(--accent);font:700 13px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm.fsnodim #fsDim{background:transparent;color:#f3e6d3;border-color:#6b5a45}body.fsm.vphoto #fsInfo,body.fsm.vphoto #fsDim{display:none}body.fsm .laybar{top:72px!important;bottom:auto!important;left:8px!important;right:8px!important;transform:none!important;justify-content:center;flex-wrap:wrap;width:max-content;margin:0 auto}body.fsm .laybar>span{display:none}@media (max-width:600px){body:not(.fsm) #zoomBar [data-mx],body:not(.fsm) #zoomBar [data-my]{display:none}body:not(.fsm) .laybar{left:68px!important;right:68px!important;transform:none!important;bottom:12px!important;top:auto!important;justify-content:center;flex-wrap:nowrap;padding-left:4px!important;width:auto}body:not(.fsm) .laybar>span{display:none}body.vphoto:not(.fsm) #zoomBar{bottom:62px;gap:4px}}#zoomBar{display:none}body.vphoto #zoomBar{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;position:absolute;left:8px;right:8px;width:auto;transform:none;bottom:72px;top:auto;z-index:6;padding:0;background:transparent;backdrop-filter:none}#zoomBar button{width:42px;height:38px;border-radius:12px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3;font:700 20px system-ui;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}#zpWrap{display:flex;align-items:center;gap:2px;height:38px;padding:0 8px;border-radius:14px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3}#zp{width:46px;border:0;background:transparent;color:#f3e6d3;font:700 16px system-ui;text-align:right;outline:0;-moz-appearance:textfield}#zp::-webkit-outer-spin-button,#zp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}#zu{font:700 14px system-ui;opacity:.8;min-width:18px}#zoomBar .zfit{width:auto!important;padding:0 10px;font-size:13px!important}#zoomBar button:active{background:var(--accent);color:#1a1410}#fsInfo .fact{background:rgba(20,16,12,.85);border:1px solid #6b5a45;color:#f3e6d3;border-radius:999px;padding:5px 10px;font:600 12.5px system-ui}#fsInfo .fact i{font-style:normal;opacity:.7}}';document.head.appendChild(st);
   const sw=document.querySelector('.stagewrap'),b=document.createElement('button');b.type='button';b.className='fsbtn';b.id='fsBtn';b.setAttribute('aria-label','Model na celú obrazovku');b.textContent='⛶';sw.appendChild(b);const fi=document.createElement('div');fi.id='fsInfo';sw.appendChild(fi);const zb=document.createElement('div');zb.id='zoomBar';zb.innerHTML='<button type="button" data-z="-1" aria-label="Zmenšiť">−</button><label id="zpWrap"><input id="zp" type="number" inputmode="numeric" min="20" max="400" step="1" aria-label="Veľkosť v percentách"><b id="zu">%</b></label><button type="button" data-z="1" aria-label="Zväčšiť">+</button><button type="button" data-r="-1" aria-label="Otočiť doľava">↺</button><button type="button" data-r="1" aria-label="Otočiť doprava">↻</button><button type="button" data-fit="1" class="zfit" aria-label="Celá fotka bez orezania">Celá</button><button type="button" data-call="1" class="zfit" title="Každú fotku vráti do stredu jej poľa (veľkosť ostane)">Stred všetky</button><button type="button" data-mx="-1" aria-label="Posunúť doľava">←</button><button type="button" data-my="-1" aria-label="Posunúť hore">↑</button><button type="button" data-my="1" aria-label="Posunúť dole">↓</button><button type="button" data-mx="1" aria-label="Posunúť doprava">→</button>';sw.appendChild(zb);
