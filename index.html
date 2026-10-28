@@ -943,7 +943,7 @@ body.tips-open .vfoot,body.tips-open .laybar{visibility:hidden}
    </div></details>
    <details class="more adv"><summary>Pokročilé – hrúbky a presnosť</summary><div>
     <div class="row"><label>Gama</label><input type="range" id="gam" min="0.4" max="2.5" step="0.05" value="1"></div>
-    <div class="row"><label>Najtenšie – svetlo (mm)</label><input type="number" id="tmin" value="0.8" min="0.3" max="5" step="0.1" inputmode="decimal"></div>
+    <div class="row"><label>Najtenšie – svetlo (mm)</label><input type="number" id="tmin" value="1" min="0.3" max="5" step="0.1" inputmode="decimal"></div>
     <div class="row"><label>Najhrubšie – tieň (mm)</label><input type="number" id="tmax" value="3.4" min="0.5" max="10" step="0.1" inputmode="decimal"></div>
     <div class="row"><label>Min. šírka prvku / trysky (mm)</label><input type="number" id="feat" value="0.45" min="0.2" max="3" step="0.05" inputmode="decimal"></div>
     <div class="row"><label>Prevod jasu na hrúbku</label><select id="tmap"><option value="light">Podľa svetla</option><option value="linear">Lineárny</option></select></div>
@@ -1318,6 +1318,7 @@ function autoSettings(r){
   try{const ph=state.photos&&state.photos[0],src=state.src||(ph&&ph.src);if(src&&r.sharp<=3){const k=256/Math.max(src.width,src.height),w=Math.max(8,Math.round(src.width*k)),h=Math.max(8,Math.round(src.height*k)),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(src,0,0,w,h);const d=g.getImageData(0,0,w,h).data,Y=new Float32Array(w*h);for(let i=0;i<w*h;i++)Y[i]=0.299*d[4*i]+0.587*d[4*i+1]+0.114*d[4*i+2];
     let L=0,n=0;for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;L+=Math.abs(4*Y[i]-Y[i-1]-Y[i+1]-Y[i-w]-Y[i+w]);n++;}L/=Math.max(1,n);state.busy=L;
     if(L>24){set('e_cla',Math.min(+$('e_cla').value,0.15));set('e_sha',Math.min(+$('e_sha').value,0.2));set('e_den',Math.max(+$('e_den').value,0.25));set('e_gla',0);}}}catch(e){}
+  if(Math.abs(+$('tmin').value-0.8)<1e-6)set('tmin',1);   // white PLA: 1,0 mm keeps detail in bright faces and sky (0,8 burns out under a strong LED)
   set('con',1); set('bri',0); set('gam',1);
 }
 function renderReport(p){
@@ -2551,7 +2552,7 @@ function lightLin(t){const C=state.calib,T=C.t,B=C.b;
   for(let i=1;i<T.length;i++) if(t<=T[i]){const f=(t-T[i-1])/(T[i]-T[i-1]),a=Math.log(Math.max(B[i-1],1e-4)),b=Math.log(Math.max(B[i],1e-4));return Math.exp(a+(b-a)*f);}
   return Math.max(B[B.length-1],1e-4)*Math.exp(-C.k*(t-T[T.length-1]));}
 function shade(t,tmin,hole){   // → display RGB 0..1 (physically: transmitted light of a warm white LED, shown in sRGB)
-  if(!state.calib){const d=hole?-0.38:t-tmin,W=[1,0.58,0.27],KC=[0.88,1,1.18],e=x=>{x=Math.min(1,Math.max(0,x));return x<=0.0031308?12.92*x:1.055*Math.pow(x,1/2.4)-0.055;};return [0,1,2].map(a=>e(Math.exp(-K_WHITE*KC[a]*d)*W[a]));}
+  if(!state.calib){const d=hole?-0.38:t-tmin,warm=!!($('lBase')&&$('lBase').checked&&$('lLight')&&$('lLight').value==='tea'),W=warm?[1,0.58,0.27]:[1.0,0.985,0.925],KC=[0.88,1,1.18],K=warm?K_WHITE:1.25,e=x=>{x=Math.min(1,Math.max(0,x));return x<=0.0031308?12.92*x:1.055*Math.pow(x,1/2.4)-0.055;};return [0,1,2].map(a=>e(Math.exp(-K*KC[a]*d)*W[a]));}   // neutral LED values measured on a real print (Prusament PLA Pristine White, frame on an LED strip)
   const C=state.calib, L=hole?Math.min(3,Math.exp(C.k*C.t[0])):lightLin(t), enc=x=>x<=0?0:Math.pow(Math.min(x,4),1/2.2);
   return [enc(L*C.col[0]),enc(L*C.col[1]),enc(L*C.col[2])];
 }
