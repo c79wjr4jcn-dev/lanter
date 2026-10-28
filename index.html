@@ -911,7 +911,8 @@ body.tips-open .vfoot,body.tips-open .laybar{visibility:hidden}
    </div>
    <div class="grp d3" id="d3Box"><h3>3D efekt – tvár vystúpi z obrazu</h3>
     <div class="d3card"><div class="row"><label for="d3Rel">1 · Vystúpená tvár<small>Osoba sa vytlačí von ako reliéf na minci – plastická cez deň aj so svetlom.</small></label><input type="checkbox" id="d3Rel"></div>
-     <div class="row d3sub" id="d3RelRow"><label>Výška reliéfu (mm)</label><input type="range" id="d3H" min="1" max="10" step="0.5" value="4"></div></div>
+     <div class="row d3sub" id="d3RelRow"><label>Výška reliéfu (mm)</label><input type="range" id="d3H" min="1" max="10" step="0.5" value="2.5"></div>
+     <div class="row d3sub" id="d3ShapeRow"><label>Tvar vystúpenia<small>Rovno = celý obrys vystúpi rovnako (ako vystrihnutý z fotky) · Zaoblene = hlava a ramená viac</small></label><select id="d3Shape"><option value="flat">Rovno – vystrihnutý obrys</option><option value="round">Zaoblene</option></select></div></div>
     <div class="d3card"><div class="row"><label for="d3Dof">2 · Hĺbka ostrosti<small>Pozadie sa jemne rozmaže a stmavne, tvár zostane ostrá – oko ju vníma vpredu.</small></label><input type="checkbox" id="d3Dof"></div>
      <div class="row d3sub" id="d3DofRow"><label>Sila</label><input type="range" id="d3Ds" min="0.2" max="1" step="0.05" value="0.65"></div></div>
     <div class="d3card"><div class="row"><label for="d3Lay">3 · Dve vrstvy<small>Pozadie na samostatnom diele vzadu, tvár vpredu – pri pohybe sa naozaj posúvajú ako 3D.</small></label><input type="checkbox" id="d3Lay"></div>
@@ -2033,23 +2034,46 @@ function pinsAndHoles(F,p){
         if(i<0||j<0||i>=vx||j>=vy)continue;const v=j*step,u=i*step;if(Math.abs(u-uc)>rw||v<vtop||v>vbot)continue;
         const k=j*vx+i,dep=Math.min(D,(v-vtop)*tan);if(dep>0)Bo[k]=Math.min(dep,t[k]-0.6);}}
     F.Bo=Bo;}}
-function reliefField(Bm,t,vx,vy,step,p,dist,fw,inV,round){   // bas-relief of the person: rounded body + head, face modelled from its own light and shade
+function reliefField(Bm,t,vx,vy,step,p,dist,fw,inV,round){
+  if(p.d3.shape!=='round'){const n=vx*vy,H=p.d3.H,
+    // snap the soft AI mask to the real edges of the photo (guided filter: the picture guides where the outline goes)
+    S=(()=>{const rng=Math.max(0.1,p.tmax-p.tmin),I=new Float32Array(n);for(let k=0;k<n;k++)I[k]=clamp((p.tmax-t[k])/rng,0,1);
+      const r=Math.max(1,2.5/step),mI=gauss(I,vx,vy,r),mP=gauss(Bm,vx,vy,r),II=new Float32Array(n),IP=new Float32Array(n);for(let k=0;k<n;k++){II[k]=I[k]*I[k];IP[k]=I[k]*Bm[k];}
+      const mII=gauss(II,vx,vy,r),mIP=gauss(IP,vx,vy,r),A=new Float32Array(n),B=new Float32Array(n),eps=0.004;
+      for(let k=0;k<n;k++){const v=mII[k]-mI[k]*mI[k],c=mIP[k]-mI[k]*mP[k];A[k]=c/(v+eps);B[k]=mP[k]-A[k]*mI[k];}
+      const mA=gauss(A,vx,vy,r),mB=gauss(B,vx,vy,r),Q=new Float32Array(n);for(let k=0;k<n;k++)Q[k]=clamp(mA[k]*I[k]+mB[k],0,1);
+      // smooth bright sky inside the soft mask (gap between heads, halo above hair) is background – drop it
+      {const r2=Math.max(1,1.2/step),m1=gauss(I,vx,vy,r2),m2=gauss(II,vx,vy,r2);for(let k=0;k<n;k++){const sd=Math.sqrt(Math.max(0,m2[k]-m1[k]*m1[k]));if(sd<0.025&&I[k]>0.55)Q[k]*=0.15;}}return gauss(Q,vx,vy,Math.max(1,0.6/step));})(),O=new Float32Array(n),sm=x=>x<=0?0:x>=1?1:x*x*(3-2*x),fl=round?18:6;
+    // clean outline: small gaps (spokes, hair strands) closed, tiny islands dropped
+    const C=gauss(S,vx,vy,Math.max(1,1.2/step)),M0=new Uint8Array(n);for(let k=0;k<n;k++)M0[k]=C[k]>0.55?1:0;const Din=edt(M0,vx,vy),er=0.6/step;   // the AI mask is soft and a bit too big (halo above heads) – shrink it by ~1,6 mm
+    for(let k=0;k<n;k++){const m=M0[k]&&Math.sqrt(Din[k])>er?1:0;O[k]=m*H*sm((dist[k]-fw-1)/fl)*(inV&&!inV[k]?0:1);}
+    // ramps: left/right ≤ 60° (printed standing – side walls are vertical, no overhang), up/down ≤ 40° (layer by layer)
+    const lv=1.0*step,lh=2.7*step;
+    // ramps go OUTWARD into the background, so the whole figure (head top included) keeps full height
+    for(let i=0;i<vx;i++){for(let j=1;j<vy;j++){const k=j*vx+i;O[k]=Math.max(O[k],O[k-vx]-lv);}for(let j=vy-2;j>=0;j--){const k=j*vx+i;O[k]=Math.max(O[k],O[k+vx]-lv);}}
+    for(let j=0;j<vy;j++){for(let i=1;i<vx;i++){const k=j*vx+i;O[k]=Math.max(O[k],O[k-1]-lh);}for(let i=vx-2;i>=0;i--){const k=j*vx+i;O[k]=Math.max(O[k],O[k+1]-lh);}}
+    for(let k=0;k<n;k++)O[k]*=sm((dist[k]-fw-1)/fl)*(inV&&!inV[k]?0:1);
+    const G=gauss(O,vx,vy,Math.max(1,0.6/step));for(let k=0;k<n;k++)O[k]=Math.min(O[k],G[k]+0.15);
+    return O;}   // bas-relief of the person: rounded body + head, face modelled from its own light and shade
   const n=vx*vy,sm=x=>x<=0?0:x>=1?1:x*x*(3-2*x),inside=new Uint8Array(n);for(let k=0;k<n;k++)inside[k]=Bm[k]>0.5?1:0;
   let jt=vy,jb=0;for(let j=0;j<vy;j++)for(let i=0;i<vx;i++)if(inside[j*vx+i]){if(j<jt)jt=j;if(j>jb)jb=j;}if(jb<=jt)return null;const hgt=jb-jt;
   let hw=0,hc=0;for(let j=jt;j<jt+0.3*hgt;j++){let c=0;for(let i=0;i<vx;i++)c+=inside[j*vx+i];if(c){hw+=c;hc++;}}hw=hc?hw/hc*step:40;
   const D=edt(inside,vx,vy),Rd=clamp(0.6*hw,10,60),dome=new Float32Array(n);
-  for(let k=0;k<n;k++){if(!inside[k])continue;const d=Math.sqrt(D[k])*step,x=Math.min(1,d/Rd);dome[k]=x*(2-x);}
+  const Re=clamp(0.22*hw,2,5);for(let k=0;k<n;k++){if(!inside[k])continue;const d=Math.sqrt(D[k])*step,x=Math.min(1,d/Rd),e=Math.min(1,d/Re);dome[k]=0.8*e*(2-e)+0.2*x*(2-x);}   // rounded rim + almost flat plateau – a body like on a coin, not a dome (a dome reads as a big belly)
   const dm=gauss(dome,vx,vy,Math.max(1,3/step));
   // face modelling: brighter = nearer (cheeks, nose, forehead), darker = deeper (eye sockets) – only inside the person
   const lum=new Float32Array(n),rng=Math.max(0.1,p.tmax-p.tmin);for(let k=0;k<n;k++)lum[k]=clamp((p.tmax-t[k])/rng,0,1);
-  const a1=gauss(lum,vx,vy,Math.max(1,2.2/step)),a2=gauss(lum,vx,vy,Math.max(1,9/step)),bp=new Float32Array(n);let sq=0,cn=0;
+  const a1=gauss(lum,vx,vy,Math.max(1,6/step)),a2=gauss(lum,vx,vy,Math.max(1,16/step)),bp=new Float32Array(n);let sq=0,cn=0;
   for(let k=0;k<n;k++){bp[k]=a1[k]-a2[k];if(inside[k]){sq+=bp[k]*bp[k];cn++;}}const sd=Math.sqrt(sq/Math.max(1,cn))||1;
   const ms=gauss(Bm,vx,vy,Math.max(1,2/step)),O=new Float32Array(n),H=p.d3.H,fl=round?18:6;
-  for(let j=0;j<vy;j++){const hd=0.6+0.4*Math.max(0,1-Math.max(0,j-jt-0.35*hgt)/(0.35*hgt));   // the head comes forward more than the shoulders
-    for(let i=0;i<vx;i++){const k=j*vx+i;let o=H*(0.8*dm[k]*hd+0.2*clamp(bp[k]/(2*sd),-1,1)*dm[k]*hd);
+  const ctop=new Int32Array(vx).fill(-1);{const C=gauss(Bm,vx,vy,Math.max(1,8/step));for(let i=0;i<vx;i++){for(let j=0;j<vy;j++)if(C[j*vx+i]>0.35){ctop[i]=j;break;}}
+    const T2=new Float32Array(vx);for(let i=0;i<vx;i++){let s2=0,c2=0;for(let d=-Math.round(10/step);d<=Math.round(10/step);d++){const q=ctop[clamp(i+d,0,vx-1)];if(q>=0){s2+=q;c2++;}}T2[i]=c2?s2/c2:-1;}for(let i=0;i<vx;i++)ctop[i]=Math.round(T2[i]);}
+  const hh=Math.max(8/step,Math.min(0.16*hgt,32/step));   // head size: top of each figure
+  for(let j=0;j<vy;j++){   // the head comes forward more than the shoulders
+    for(let i=0;i<vx;i++){const k=j*vx+i,top=ctop[i]<0?jt:ctop[i],hd=0.45+0.55*Math.max(0,1-Math.max(0,j-top-hh)/(0.8*hh));let o=H*(0.85*dm[k]*hd+0.15*clamp(bp[k]/(2*sd),-1,1)*dm[k]*hd);
       o*=sm((dist[k]-fw-1)/fl)*(inV&&!inV[k]?0:1);O[k]=Math.max(0,o);}}
   // printed standing: the bulge may lean at most 45° up or down (no supports, front and back face)
-  const lim=0.75*step;for(let i=0;i<vx;i++){for(let j=1;j<vy;j++){const k=j*vx+i;O[k]=Math.min(O[k],O[k-vx]+lim);}for(let j=vy-2;j>=0;j--){const k=j*vx+i;O[k]=Math.min(O[k],O[k+vx]+lim);}}
+  const lim=0.55*step;{const G=gauss(O,vx,vy,Math.max(1,1.2/step));for(let k=0;k<n;k++)O[k]=Math.min(O[k],G[k]*1.05+0.02);}for(let i=0;i<vx;i++){for(let j=1;j<vy;j++){const k=j*vx+i;O[k]=Math.min(O[k],O[k-vx]+lim);}for(let j=vy-2;j>=0;j--){const k=j*vx+i;O[k]=Math.min(O[k],O[k+vx]+lim);}}
   return O;}
 function buildField(p){
   let prof=null;if(LATHE.includes(p.surf)){prof=latheProfile(p);p=Object.assign({},p,{W:2*Math.PI*prof.Rmax,H:prof.L});}
@@ -2511,14 +2535,20 @@ function showMesh(M){
   if(state.surf==='flat'&&M.gridTop&&M.Tv){try{const P=state.posAll.array,n=Math.min(M.gridTop,M.partsFrom||M.gridTop,M.Tv.length),tx=+$('tmax').value||3.4;
       let sxy=0,sx=0,sy=0,sxx=0,c=0;for(let k=0;k<n;k+=97){const t=M.Tv[k];if(t<tmin-0.01||t>tx+0.01)continue;const z=P[3*k+2];sxy+=t*z;sx+=t;sy+=z;sxx+=t*t;c++;}
       const cov=sxy-sx*sy/Math.max(1,c),sg=cov>0?1:cov<0?-1:0;
-      if(sg&&c>20){const Q=new Float32Array(P);for(let k=0;k<n;k++){const t=M.Tv[k];if(t<tmin-0.01||t>tx+0.01)continue;Q[3*k+2]=P[3*k+2]-sg*(t-tmin)*0.92;}state.posLit=new THREE.BufferAttribute(Q,3);}}catch(e){state.posLit=null;}}
+      if(sg&&c>20){const Q=new Float32Array(P);for(let k=0;k<n;k++){const t=M.Tv[k];if(t<tmin-0.01||t>=8)continue;Q[3*k+2]=P[3*k+2]-sg*(t-tmin)*0.92;}state.posLit=new THREE.BufferAttribute(Q,3);
+        // picture as a texture (bilinear) instead of colours on triangle corners – no zig-zag on edges
+        const F=state.F;if(F&&F.vx*F.vy===M.gridTop){const vx=F.vx,vy=F.vy,D=new Uint8Array(vx*vy*4),UV=new Float32Array(P.length/3*2),AT=new Float32Array(P.length/3);
+          for(let j=0;j<vy;j++)for(let i=0;i<vx;i++){const k=j*vx+i;for(let a=0;a<3;a++)D[4*k+a]=Math.round(clamp(col[3*k+a],0,1)*255);D[4*k+3]=255;UV[2*k]=(i+0.5)/vx;UV[2*k+1]=(j+0.5)/vy;AT[k]=1;}
+          if(state.litTex)state.litTex.dispose();const T=new THREE.DataTexture(D,vx,vy,THREE.RGBAFormat);T.magFilter=THREE.LinearFilter;T.minFilter=THREE.LinearFilter;T.generateMipmaps=false;T.needsUpdate=true;state.litTex=T;
+          geo.setAttribute('uv',new THREE.BufferAttribute(UV,2));geo.setAttribute('aTex',new THREE.BufferAttribute(AT,1));}}}catch(e){state.posLit=null;}}
   if(state.posLit&&isLit())geo.setAttribute('position',state.posLit);
   state.idxAll=geo.index;state.idxLit=null;{const Ia=geo.index.array,T=M.Tv;let hid=false;for(let k=0;k<T.length;k++)if(T[k]<=-5){hid=true;break;}   // break-off stands / rings: printed, snapped off – not in the lit preview
     if(hid){const keep=[];for(let k=0;k<Ia.length;k+=3){const a=Ia[k],b=Ia[k+1],c=Ia[k+2];if(T[a]>-5&&T[b]>-5&&T[c]>-5)keep.push(a,b,c);}state.idxLit=new THREE.BufferAttribute(Uint32Array.from(keep),1);if(isLit())geo.setIndex(state.idxLit);}}
   state.matDay=state.matDay||new THREE.MeshStandardMaterial({color:0xece4d6,roughness:0.55,metalness:0,side:THREE.DoubleSide});
   state.matLit=state.matLit||new THREE.ShaderMaterial({vertexColors:true,side:THREE.DoubleSide,
-    vertexShader:'varying vec3 vC,vN,vV;void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1.0);vV=-mv.xyz;vN=normalMatrix*normal;gl_Position=projectionMatrix*mv;}',
-    uniforms:{uK:{value:0.4}},fragmentShader:'uniform float uK;varying vec3 vC,vN,vV;void main(){float c=abs(dot(normalize(vN),normalize(vV)));gl_FragColor=vec4(vC*mix(1.0-uK,1.0,sqrt(c)),1.0);}'});
+    vertexShader:'attribute float aTex;varying float vT;varying vec2 vU;varying vec3 vC,vN,vV;void main(){vT=aTex;vU=uv;vC=color;vec4 mv=modelViewMatrix*vec4(position,1.0);vV=-mv.xyz;vN=normalMatrix*normal;gl_Position=projectionMatrix*mv;}',
+    uniforms:{uK:{value:0.4},uMap:{value:null},uUse:{value:0}},fragmentShader:'uniform float uK;uniform float uUse;uniform sampler2D uMap;varying float vT;varying vec2 vU;varying vec3 vC,vN,vV;void main(){float c=abs(dot(normalize(vN),normalize(vV)));vec3 b=vC;if(uUse>0.5&&vT>0.99)b=texture2D(uMap,vU).rgb;gl_FragColor=vec4(b*mix(1.0-uK,1.0,sqrt(c)),1.0);}'});
+  if(state.matLit.uniforms&&state.matLit.uniforms.uMap){const has=!!(state.litTex&&geo.attributes.aTex);state.matLit.uniforms.uMap.value=has?state.litTex:null;state.matLit.uniforms.uUse.value=has?1:0;}
   if(state.matLit.uniforms&&state.matLit.uniforms.uK)state.matLit.uniforms.uK.value=['flat','arc','prism','house'].includes(state.surf)?0.0:0.25;
   meshObj=new THREE.Mesh(geo,isLit()?state.matLit:state.matDay);
   group.add(meshObj);
@@ -2953,7 +2983,7 @@ const SUP_ANG_=SUP_ANG;   // steepest wall lean (from vertical) the shape may ha
 function params(){
   const o={noSup:$('noSup')?$('noSup').checked:true,holeB:num('holeB'),holeT:num('holeT'),globe:$('globe').value,cmode:state.cmode||'mono',stack:state.stack,fil:{W:$('fW').value,C:$('fC').value,M:$('fM').value,Y:$('fY').value},cK:+$('cK').value,cPx:+$('cPx').value,csat:num('csat'),printer:$('printer')?$('printer').value:'core1',sides:+$('sides').value,taper:num('taper'),surf:state.surf,shape:state.shape,style:state.style,angle:num('angle'),W:num('W'),H:num('H'),P:num('P'),feat:num('feat'),
     tmin:num('tmin'),tmax:num('tmax'),frameOn:$('frameOn').checked,fstyle:$('fstyle').value,fw:num('fw'),ft:num('ft'),
-    lhole:Math.max(0,Math.min(90,+(($('hType')&&state.surf==='house'?$('hHole'):$('lHole'))||{value:30}).value||0)),hang:$('hang').checked&&(state.surf==='sphere'||state.surf==='flat'),lbase:$('lBase').checked&&(state.surf==='cyl'||state.surf==='cone'||state.surf==='sphere')?$('lLight').value:null,fstand:$('fStand').checked&&state.surf==='flat',lhTop:$('lhTop')?$('lhTop').checked:false,look:state.look||'litho',text:(($('tx1').value||'').trim()||($('tx2').value||'').trim())?{t1:$('tx1').value.trim(),t2:$('tx2').value.trim(),pos:$('txPos').value,mode:$('txMode').value,size:num('txSize'),font:$('txFont').value,dx:state.txT?state.txT.x:0,dy:state.txT?state.txT.y:0}:null,d3:{rel:$('d3Rel').checked,H:num('d3H'),dof:$('d3Dof').checked,ds:num('d3Ds'),lay:$('d3Lay').checked,gap:num('d3Gap')},bri:num('bri'),con:num('con'),gam:num('gam'),inv:$('inv').checked,res:num('res'),ovh:$('ovh').value,tmap:$('tmap').value,flip:$('flip').checked,pLo:num('pLo'),pHi:num('pHi'),pSm:num('pSm'),
+    lhole:Math.max(0,Math.min(90,+(($('hType')&&state.surf==='house'?$('hHole'):$('lHole'))||{value:30}).value||0)),hang:$('hang').checked&&(state.surf==='sphere'||state.surf==='flat'),lbase:$('lBase').checked&&(state.surf==='cyl'||state.surf==='cone'||state.surf==='sphere')?$('lLight').value:null,fstand:$('fStand').checked&&state.surf==='flat',lhTop:$('lhTop')?$('lhTop').checked:false,look:state.look||'litho',text:(($('tx1').value||'').trim()||($('tx2').value||'').trim())?{t1:$('tx1').value.trim(),t2:$('tx2').value.trim(),pos:$('txPos').value,mode:$('txMode').value,size:num('txSize'),font:$('txFont').value,dx:state.txT?state.txT.x:0,dy:state.txT?state.txT.y:0}:null,d3:{rel:$('d3Rel').checked,H:num('d3H'),shape:($('d3Shape')&&$('d3Shape').value)||'flat',dof:$('d3Dof').checked,ds:num('d3Ds'),lay:$('d3Lay').checked,gap:num('d3Gap')},bri:num('bri'),con:num('con'),gam:num('gam'),inv:$('inv').checked,res:num('res'),ovh:$('ovh').value,tmap:$('tmap').value,flip:$('flip').checked,pLo:num('pLo'),pHi:num('pHi'),pSm:num('pSm'),
     m:{w:num('m_w'),kind:$('m_kind').value,x:num('m_x'),y:num('m_y'),s:num('m_s'),p:num('m_p'),dark:$('m_dark').checked,mode:$('m_mode').value,r:num('m_r'),behind:$('m_behind').checked},
     bg:{mode:state.bg,fill:$('bg_fill').value,soft:num('bg_soft'),ov:num('bg_ov'),edge:num('bg_edge'),sc:num('bg_sc')},
     e:{gla:num('e_gla'),on:$('e_on').checked,cast:$('e_cast').checked,lev:$('e_lev').checked,scr:num('e_scr'),den:num('e_den'),cla:num('e_cla'),sha:num('e_sha')}};
@@ -3091,7 +3121,7 @@ const SCENE_TINT={sky:[0.86,0.93,1.06],mountains:[0.88,0.93,1.02],forest:[0.86,1
 function placeOf(ph,i,p,Tw,Th){
   const P=ph.proc;let sx=0,sw=Tw;
   if(p.surf==='prism'){const N=p.sides;sw=Tw/N;sx=(((ph.slot==null?i:ph.slot)%N)+N)%N*sw;}
-  const round=['cyl','cone','sphere','lathe'].includes(p.surf),sc=(round?Th/P.height:Math.max(sw/P.width,Th/P.height))*ph.s;
+  const round=['cyl','cone','sphere','lathe'].includes(p.surf),nR=round?state.photos.filter(q=>q.src).length:1,sc=(round?(nR>1?Math.max(Th/P.height,(Tw/nR+Tw*0.08)/P.width):Th/P.height):Math.max(sw/P.width,Th/P.height))*ph.s;   // several photos round a lamp: each fills its share of the circumference (a little overlap for a soft join)
   return {cx:sx+sw/2+ph.x*Tw,cy:Th/2+ph.y*Th,w:P.width*sc,h:P.height*sc,r:ph.r*Math.PI/180};}
 function rowWarp(p,Th){   // horizontal stretch per picture row = widest radius / radius of that row
   if(!(LATHE.includes(p.surf)||p.surf==='cone'))return null;
@@ -3501,12 +3531,37 @@ function compose(p,work){
     if(cut&&f==='dim'){if(!ph.dim){const c=document.createElement('canvas');c.width=ph.proc.width;c.height=ph.proc.height;const q=c.getContext('2d');q.drawImage(ph.proc,0,0);
       const im=q.getImageData(0,0,c.width,c.height),d=im.data;for(let k=0;k<d.length;k+=4){const y=(0.299*d[k]+0.587*d[k+1]+0.114*d[k+2])*0.35+20;d[k]=d[k+1]=d[k+2]=y;}q.putImageData(im,0,0);ph.dim=c;}
       put(g,ph.dim);}
-    put(g,L);if(cg)put(cg,layerColor(ph));
+    const wrapR=['cyl','cone','sphere','lathe'].includes(p.surf)&&p.globe!=='map',put0=put;
+    const putW=(gg,img)=>{put0(gg,img);if(!wrapR)return;for(const d of [-Tw,Tw]){if(T.cx-T.w+d<Tw&&T.cx+T.w+d>0){T.cx+=d;put0(gg,img);T.cx-=d;}}};   // round pieces: a photo that crosses the seam continues on the other side
+    const nW=state.photos.filter(q=>q.src).length,share=wrapR&&nW>1&&state.bg==='keep';
+    const putS=(gg,img)=>{if(!share){putW(gg,img);return;}   // several photos round a lamp: each fills exactly its share, a short soft join (~3 % of the circumference) – no double exposure
+      const D=document.createElement('canvas');D.width=Tw;D.height=Th;const dg=D.getContext('2d');dg.imageSmoothingQuality='high';
+      const wS=Tw/nW*1.1,small=T.w<wS||T.h<Th*0.999;
+      if(small){   // photo made smaller than its share: soft blurred copy of it fills the rest (no empty strips), the sharp photo sits on top with soft edges
+        const sm=document.createElement('canvas'),k=48/Math.max(img.width,img.height);sm.width=Math.max(2,Math.round(img.width*k));sm.height=Math.max(2,Math.round(img.height*k));const sg=sm.getContext('2d');sg.imageSmoothingQuality='high';sg.drawImage(img,0,0,sm.width,sm.height);
+        dg.imageSmoothingEnabled=true;const W2=sm.width,H2=sm.height;   // blurred copy at the SAME place, its edges stretched out to fill the share – content lines up with the sharp photo
+        for(const d of [-Tw,0,Tw]){const x0=T.cx+d-T.w/2,y0=T.cy-T.h/2,x1=x0+T.w,y1=y0+T.h,L=T.cx+d-wS/2-Tw*0.03,R=T.cx+d+wS/2+Tw*0.03;
+          dg.drawImage(sm,x0,y0,T.w,T.h);
+          const mir=(x,y,w,h,fx,fy)=>{dg.save();dg.translate(x+(fx?w:0),y+(fy?h:0));dg.scale(fx?-1:1,fy?-1:1);dg.drawImage(sm,0,0,w,h);dg.restore();};   // mirrored blurred copies continue the picture softly
+          if(L<x0)mir(x0-T.w,y0,T.w,T.h,1,0);if(R>x1)mir(x1,y0,T.w,T.h,1,0);if(y0>0){mir(x0,y0-T.h,T.w,T.h,0,1);mir(x0-T.w,y0-T.h,T.w,T.h,1,1);mir(x1,y0-T.h,T.w,T.h,1,1);}if(y1<Th){mir(x0,y1,T.w,T.h,0,1);mir(x0-T.w,y1,T.w,T.h,1,1);mir(x1,y1,T.w,T.h,1,1);}
+          if(false)
+          if(false&&y0>0){dg.drawImage(sm,0,0,W2,1,x0,0,T.w,y0);if(L<x0)dg.drawImage(sm,0,0,1,1,L,0,x0-L,y0);if(R>x1)dg.drawImage(sm,W2-1,0,1,1,x1,0,R-x1,y0);}
+          if(false&&y1<Th){dg.drawImage(sm,0,H2-1,W2,1,x0,y1,T.w,Th-y1);if(L<x0)dg.drawImage(sm,0,H2-1,1,1,L,y1,x0-L,Th-y1);if(R>x1)dg.drawImage(sm,W2-1,H2-1,1,1,x1,y1,R-x1,Th-y1);}}
+        const F2=document.createElement('canvas');F2.width=img.width;F2.height=img.height;const fg=F2.getContext('2d');fg.drawImage(img,0,0);fg.globalCompositeOperation='destination-in';
+        const e=0.06,gx=fg.createLinearGradient(0,0,img.width,0);gx.addColorStop(0,'rgba(0,0,0,0)');gx.addColorStop(e,'#000');gx.addColorStop(1-e,'#000');gx.addColorStop(1,'rgba(0,0,0,0)');fg.fillStyle=gx;fg.fillRect(0,0,img.width,img.height);
+        if(T.h<Th*0.999){const gy=fg.createLinearGradient(0,0,0,img.height);gy.addColorStop(0,'rgba(0,0,0,0)');gy.addColorStop(e,'#000');gy.addColorStop(1-e,'#000');gy.addColorStop(1,'rgba(0,0,0,0)');fg.fillStyle=gy;fg.fillRect(0,0,img.width,img.height);}
+        img=F2;}
+      putW(dg,img);
+      const WM=document.createElement('canvas');WM.width=Tw;WM.height=Th;const wg=WM.getContext('2d');const w=Tw/nW,b=Tw*0.025,first=i===0,last=i===nW-1;
+      for(const d of [-Tw,0,Tw]){const L0=T.cx+d-w/2-b/2,R0=T.cx+d+w/2+b/2,gr=wg.createLinearGradient(L0,0,R0,0),f=b/(R0-L0);
+        gr.addColorStop(0,first?'#000':'rgba(0,0,0,0)');gr.addColorStop(f,'#000');gr.addColorStop(1-f,'#000');gr.addColorStop(1,last&&nW>1?'rgba(0,0,0,0)':'#000');wg.fillStyle=gr;wg.fillRect(L0,0,R0-L0,Th);}
+      dg.globalCompositeOperation='destination-in';dg.drawImage(WM,0,0);gg.drawImage(D,0,0);};
+    putS(g,share?(ph.proc||L):L);if(cg)putS(cg,layerColor(ph));
     if(ph.mask&&ph.maskFor===ph.srcId){   // where the people are (motif "behind", stencil hairlines, ring centre)
       if(!pm){pm=document.createElement('canvas');pm.width=Tw;pm.height=Th;pg=pm.getContext('2d');pg.fillStyle='#000';pg.fillRect(0,0,Tw,Th);}
       {const fe=layFeather(p),pk=ph.maskFor+'|'+multi+'|'+fe.join(',');
         if(!ph.pmC||ph.pmFor!==pk){const S=ph.mask,R=multi?featherRect(S.w,S.h,fe[0],fe[1]):null;ph.pmC=grayCanvas(S.M.map((v,q)=>v*(R?R[q]:1)*255),S.w,S.h);ph.pmFor=pk;}}
-      pg.globalCompositeOperation='lighten';put(pg,ph.pmC);}
+      pg.globalCompositeOperation='lighten';putW(pg,ph.pmC);}
   });
   applyLook(p,C,CC,BG,BGC,pm,Tw,Th);if(p.look==='rhouse')drawRoundHouse(p,C,Tw,Th);
   drawText(p,C,CC,Tw,Th);
@@ -3814,7 +3869,7 @@ const LAY_SURF=['flat','cyl','cone','prism'];
 function d3Ok(p){const cut=p.bg.mode!=='keep',mask=state.photos.some(ph=>ph.mask&&ph.maskFor===ph.srcId);
   return {rel:mask&&p.cmode!=='mono'?false:mask,cut,mask,lay:cut&&LAY_SURF.includes(p.surf)&&p.style==='litho'&&(p.cmode==='mono'||p.surf==='flat')};}
 function syncD3(){if(!$('d3Box'))return;let p;try{p=params();}catch(e){return;}const ok=d3Ok(p),h=[];
-  $('d3RelRow').hidden=!$('d3Rel').checked;$('d3DofRow').hidden=!$('d3Dof').checked;$('d3LayRow').hidden=!$('d3Lay').checked;
+  $('d3RelRow').hidden=!$('d3Rel').checked;if($('d3ShapeRow'))$('d3ShapeRow').hidden=!$('d3Rel').checked;$('d3DofRow').hidden=!$('d3Dof').checked;$('d3LayRow').hidden=!$('d3Lay').checked;
   if($('d3Rel').checked&&!ok.mask)h.push('Vystúpená tvár: najprv v kroku 2 vymeň pozadie – appka musí vedieť, kde je osoba.');
   if($('d3Rel').checked&&ok.mask&&p.cmode!=='mono')h.push('Vystúpená tvár nejde pri farebnej tlači – farebný diel sa tlačí naležato po rovných vrstvách farieb, reliéf by ich rozbil. Pri farbe použi 2 · Hĺbku ostrosti a 3 · Dve vrstvy.');
   if($('d3Dof').checked&&!ok.cut)h.push('Hĺbka ostrosti: najprv v kroku 2 vymeň pozadie.');
@@ -3972,7 +4027,7 @@ $('auto').addEventListener('click',()=>{if(!state.src)return;state.report=analyz
 
 function flatWhite(c){try{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let t=0;for(let k=3;k<d.length;k+=4*7)if(d[k]<250){t=1;break;}if(!t)return c;const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const g=o.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,o.width,o.height);g.drawImage(c,0,0);return o;}catch(e){return c;}}   // transparent = white (light), not black
 function setSource(img,add){
-  if(add&&state.userPhoto){const ph=newPhoto();state.photos.push(ph);state.act=state.photos.length-1;autoPlace(ph,state.act);}
+  if(add&&state.userPhoto){const ph=newPhoto();state.photos.push(ph);state.act=state.photos.length-1;autoPlace(ph,state.act);if(state.bg==='keep'&&['cyl','cone','sphere','lathe'].includes(state.surf))setTimeout(()=>{try{refitPhotos(false);layoutChanged();}catch(e){}},0);}
   else if(!state.photos.length){state.photos.push(newPhoto());state.act=0;}
   else if(!add){const ph=state.photos[state.act];ph.mask=null;ph.maskFor=-1;}
   state.src=flatWhite(canvasFrom(img,2400)); state.srcId=++state.nextSrcId; state.edit=null; state.editVer=(state.editVer||0)+1;
@@ -3983,7 +4038,8 @@ function setSource(img,add){
   if(state.userPhoto)segmentPerson(ph).then(ok=>{if(ok&&!ph.manual){faceFit(ph,state.photos.indexOf(ph));renderPhotos();layoutChanged();}state.enhKey='';later(10);});   // find the person once – the head then goes exactly to the middle
 }
 function faceFit(ph,i=0){   // place the photo so the head sits in the middle of the piece at a pleasant size (person mask if found, else skin colour)
-  if(!ph||!ph.src||state.surf==='house')return;const p=params(),f=faceFind(ph),sides=p.surf==='prism'?p.sides:1,A=imgAspect(p)/sides,iw=ph.src.width,ih=ph.src.height,base=['cyl','cone','sphere','lathe'].includes(p.surf)?1:Math.max(A/(iw/ih),1);   // same scale rule as placeOf
+  if(!ph||!ph.src||state.surf==='house')return;if(state.bg==='keep'&&['cyl','cone','sphere','lathe'].includes(state.surf)&&state.photos.filter(q=>q.src).length>1){ph.s=1;ph.y=0;ph.r=0;ph.x=i/state.photos.filter(q=>q.src).length;return;}   // several whole photos round a lamp: each its own share, nothing cut off
+  const p=params(),f=faceFind(ph),sides=p.surf==='prism'?p.sides:1,A=imgAspect(p)/sides,iw=ph.src.width,ih=ph.src.height,base=['cyl','cone','sphere','lathe'].includes(p.surf)?1:Math.max(A/(iw/ih),1);   // same scale rule as placeOf
   const tall=A<0.85,txt=!!p.text&&p.text.pos!=='top',hT=(tall?0.42:0.5)*(txt?0.9:1),cy=txt?0.41:0.45;   // head height as a part of the picture height; a little higher when a name sits below
   const keep=state.bg==='keep',flatK=keep&&!['cyl','cone','sphere','lathe'].includes(p.surf);let s=clamp(hT/(Math.max(0.05,f.hh)*base),keep?1:0.5,3.5);if(keep&&f.hh<0.14)s=1;
   if(flatK){const s0=s,need=sv=>{const sc_=base*sv,wf=sc_*(iw/ih)/A,yy=(cy-0.5)-(f.fy-0.5)*sc_,xx=(0.5-f.fx)*wf;return Math.abs(xx)>(wf-1)/2+1e-3||Math.abs(yy)>(sc_-1)/2+1e-3;};
@@ -4035,7 +4091,8 @@ function setLayT(v){state.layT=v;for(const id of ['layT','layBar'])[...$(id).que
   $('pc1').style.cursor=v==='bg'||v==='txt'?'move':'grab';}
 $('layT').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setLayT(b.dataset.v);});
 $('layBar').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;setLayT(b.dataset.v);});
-function centerLay(){const t=state.layT==='bg'?state.bgT:state.layT==='txt'?state.txT:actPh();if(!t)return;t.x=0;t.y=0;if(state.layT==='photo')t.r=0;renderPhotos();layoutChanged(true);toast(state.layT==='bg'?'Pozadie je na strede.':state.layT==='txt'?'Text je vrátený na pôvodné miesto.':'Fotka je na strede.');}
+function centerLay(){const t=state.layT==='bg'?state.bgT:state.layT==='txt'?state.txT:actPh();if(!t)return;t.x=0;t.y=0;{const nS=state.photos.filter(q=>q.src).length;if(state.layT==='photo'&&state.bg==='keep'&&nS>1&&['cyl','cone','sphere','lathe'].includes(state.surf))t.x=state.act/nS;}   // several photos round a lamp: centre in its own share
+  if(state.layT==='photo')t.r=0;renderPhotos();layoutChanged(true);toast(state.layT==='bg'?'Pozadie je na strede.':state.layT==='txt'?'Text je vrátený na pôvodné miesto.':'Fotka je na strede.');}
 $('viewCtr').addEventListener('click',()=>state.view==='photo'?centerLay():viewReset());
 // drag / pinch / wheel on the result picture
 (()=>{const c=$('pc1'),pts=new Map();let g0=null;
@@ -4595,10 +4652,10 @@ document.addEventListener('touchmove',e=>{if(e.touches.length>1&&e.target.closes
   const _gs=goStep;goStep=function(){const r=_gs.apply(this,arguments);try{q.hidden=state.step==='print';}catch(e){}return r;};
   fill();})();
 /* computer: the photo tools row (zoom %, rotate, whole photo) – phone rules below override it */
-(()=>{const st=document.createElement('style');st.textContent='#fsInfo,#fsDim{display:none}#zoomBar{display:none}body.vphoto #zoomBar{display:flex;align-items:center;gap:6px;position:absolute;left:50%;transform:translateX(-50%);top:64px;z-index:6;padding:5px;border-radius:16px;background:rgba(20,16,12,.7);backdrop-filter:blur(6px)}#zoomBar button{width:40px;height:36px;border-radius:11px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3;font:700 18px system-ui;cursor:pointer}#zoomBar button:hover{border-color:var(--accent)}#zoomBar .zfit{width:auto!important;padding:0 12px;font-size:13px!important}#zpWrap{display:flex;align-items:center;gap:2px;height:36px;padding:0 8px;border-radius:11px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3}#zp{width:48px;border:0;background:transparent;color:#f3e6d3;font:700 15px system-ui;text-align:right;outline:0;-moz-appearance:textfield}#zp::-webkit-outer-spin-button,#zp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}#zu{font:700 13px system-ui;opacity:.8;min-width:18px}';document.head.insertBefore(st,document.head.firstChild);})();
+(()=>{const st=document.createElement('style');st.textContent='#fsInfo,#fsDim{display:none}#zoomBar{display:none}body.vphoto #zoomBar{display:flex;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 24px);width:max-content;margin:0 auto;align-items:center;gap:6px;position:absolute;left:0;right:0;transform:none;top:64px;z-index:6;padding:5px;border-radius:16px;background:rgba(20,16,12,.7);backdrop-filter:blur(6px)}#zoomBar button{width:40px;height:36px;border-radius:11px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3;font:700 18px system-ui;cursor:pointer}#zoomBar button:hover{border-color:var(--accent)}#zoomBar .zfit{width:auto!important;padding:0 12px;font-size:13px!important}#zpWrap{display:flex;align-items:center;gap:2px;height:36px;padding:0 8px;border-radius:11px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3}#zp{width:48px;border:0;background:transparent;color:#f3e6d3;font:700 15px system-ui;text-align:right;outline:0;-moz-appearance:textfield}#zp::-webkit-outer-spin-button,#zp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}#zu{font:700 13px system-ui;opacity:.8;min-width:18px}';document.head.insertBefore(st,document.head.firstChild);})();
 /* phone: full-screen model (hides the title bar and the sheet) */
-(()=>{const st=document.createElement('style');st.textContent='.fsbtn{display:none}@media (max-width:600px){.fsbtn{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:12px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid var(--line2,#555);background:rgba(20,16,12,.72);color:var(--accent);font:700 20px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm header.top{display:none}body.fsm #panel{border:0;overflow:hidden;padding:0}body.fsm .stagewrap{border-radius:0}#fsInfo,#fsDim{display:none}body.fsm #fsInfo{display:flex;flex-wrap:wrap;gap:6px;position:absolute;left:12px;right:112px;bottom:68px;z-index:5;pointer-events:none}body.fsm.fsnodim #fsInfo{display:none}body.fsm #fsDim{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:68px;z-index:6;height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--accent);background:rgba(20,16,12,.8);color:var(--accent);font:700 13px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm.fsnodim #fsDim{background:transparent;color:#f3e6d3;border-color:#6b5a45}body.fsm.vphoto #fsInfo,body.fsm.vphoto #fsDim{display:none}body.fsm .laybar{top:72px!important;bottom:auto!important;left:8px!important;right:8px!important;transform:none!important;justify-content:center;flex-wrap:wrap;width:max-content;margin:0 auto}body.fsm .laybar>span{display:none}@media (max-width:600px){body:not(.fsm) .laybar{left:68px!important;right:68px!important;transform:none!important;bottom:12px!important;top:auto!important;justify-content:center;flex-wrap:nowrap;padding-left:4px!important;width:auto}body:not(.fsm) .laybar>span{display:none}body.vphoto:not(.fsm) #zoomBar{bottom:62px;gap:4px}}#zoomBar{display:none}body.vphoto #zoomBar{display:flex;gap:6px;position:absolute;left:50%;transform:translateX(-50%);bottom:80px;top:auto;z-index:6;padding:0;background:transparent;backdrop-filter:none}#zoomBar button{width:42px;height:38px;border-radius:12px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3;font:700 20px system-ui;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}#zpWrap{display:flex;align-items:center;gap:2px;height:38px;padding:0 8px;border-radius:14px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3}#zp{width:46px;border:0;background:transparent;color:#f3e6d3;font:700 16px system-ui;text-align:right;outline:0;-moz-appearance:textfield}#zp::-webkit-outer-spin-button,#zp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}#zu{font:700 14px system-ui;opacity:.8;min-width:18px}#zoomBar .zfit{width:auto!important;padding:0 10px;font-size:13px!important}#zoomBar button:active{background:var(--accent);color:#1a1410}#fsInfo .fact{background:rgba(20,16,12,.85);border:1px solid #6b5a45;color:#f3e6d3;border-radius:999px;padding:5px 10px;font:600 12.5px system-ui}#fsInfo .fact i{font-style:normal;opacity:.7}}';document.head.appendChild(st);
-  const sw=document.querySelector('.stagewrap'),b=document.createElement('button');b.type='button';b.className='fsbtn';b.id='fsBtn';b.setAttribute('aria-label','Model na celú obrazovku');b.textContent='⛶';sw.appendChild(b);const fi=document.createElement('div');fi.id='fsInfo';sw.appendChild(fi);const zb=document.createElement('div');zb.id='zoomBar';zb.innerHTML='<button type="button" data-z="-1" aria-label="Zmenšiť">−</button><label id="zpWrap"><input id="zp" type="number" inputmode="numeric" min="20" max="400" step="1" aria-label="Veľkosť v percentách"><b id="zu">%</b></label><button type="button" data-z="1" aria-label="Zväčšiť">+</button><button type="button" data-r="-1" aria-label="Otočiť doľava">↺</button><button type="button" data-r="1" aria-label="Otočiť doprava">↻</button><button type="button" data-fit="1" class="zfit" aria-label="Celá fotka bez orezania">Celá</button>';sw.appendChild(zb);
+(()=>{const st=document.createElement('style');st.textContent='.fsbtn{display:none}@media (max-width:600px){.fsbtn{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:12px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid var(--line2,#555);background:rgba(20,16,12,.72);color:var(--accent);font:700 20px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm header.top{display:none}body.fsm #panel{border:0;overflow:hidden;padding:0}body.fsm .stagewrap{border-radius:0}#fsInfo,#fsDim{display:none}body.fsm #fsInfo{display:flex;flex-wrap:wrap;gap:6px;position:absolute;left:12px;right:112px;bottom:68px;z-index:5;pointer-events:none}body.fsm.fsnodim #fsInfo{display:none}body.fsm #fsDim{display:flex;align-items:center;justify-content:center;position:absolute;right:12px;bottom:68px;z-index:6;height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--accent);background:rgba(20,16,12,.8);color:var(--accent);font:700 13px system-ui;cursor:pointer;backdrop-filter:blur(6px)}body.fsm.fsnodim #fsDim{background:transparent;color:#f3e6d3;border-color:#6b5a45}body.fsm.vphoto #fsInfo,body.fsm.vphoto #fsDim{display:none}body.fsm .laybar{top:72px!important;bottom:auto!important;left:8px!important;right:8px!important;transform:none!important;justify-content:center;flex-wrap:wrap;width:max-content;margin:0 auto}body.fsm .laybar>span{display:none}@media (max-width:600px){body:not(.fsm) #zoomBar [data-mx],body:not(.fsm) #zoomBar [data-my]{display:none}body:not(.fsm) .laybar{left:68px!important;right:68px!important;transform:none!important;bottom:12px!important;top:auto!important;justify-content:center;flex-wrap:nowrap;padding-left:4px!important;width:auto}body:not(.fsm) .laybar>span{display:none}body.vphoto:not(.fsm) #zoomBar{bottom:62px;gap:4px}}#zoomBar{display:none}body.vphoto #zoomBar{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;position:absolute;left:8px;right:8px;width:auto;transform:none;bottom:72px;top:auto;z-index:6;padding:0;background:transparent;backdrop-filter:none}#zoomBar button{width:42px;height:38px;border-radius:12px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3;font:700 20px system-ui;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}#zpWrap{display:flex;align-items:center;gap:2px;height:38px;padding:0 8px;border-radius:14px;border:1px solid #6b5a45;background:rgba(20,16,12,.85);color:#f3e6d3}#zp{width:46px;border:0;background:transparent;color:#f3e6d3;font:700 16px system-ui;text-align:right;outline:0;-moz-appearance:textfield}#zp::-webkit-outer-spin-button,#zp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}#zu{font:700 14px system-ui;opacity:.8;min-width:18px}#zoomBar .zfit{width:auto!important;padding:0 10px;font-size:13px!important}#zoomBar button:active{background:var(--accent);color:#1a1410}#fsInfo .fact{background:rgba(20,16,12,.85);border:1px solid #6b5a45;color:#f3e6d3;border-radius:999px;padding:5px 10px;font:600 12.5px system-ui}#fsInfo .fact i{font-style:normal;opacity:.7}}';document.head.appendChild(st);
+  const sw=document.querySelector('.stagewrap'),b=document.createElement('button');b.type='button';b.className='fsbtn';b.id='fsBtn';b.setAttribute('aria-label','Model na celú obrazovku');b.textContent='⛶';sw.appendChild(b);const fi=document.createElement('div');fi.id='fsInfo';sw.appendChild(fi);const zb=document.createElement('div');zb.id='zoomBar';zb.innerHTML='<button type="button" data-z="-1" aria-label="Zmenšiť">−</button><label id="zpWrap"><input id="zp" type="number" inputmode="numeric" min="20" max="400" step="1" aria-label="Veľkosť v percentách"><b id="zu">%</b></label><button type="button" data-z="1" aria-label="Zväčšiť">+</button><button type="button" data-r="-1" aria-label="Otočiť doľava">↺</button><button type="button" data-r="1" aria-label="Otočiť doprava">↻</button><button type="button" data-fit="1" class="zfit" aria-label="Celá fotka bez orezania">Celá</button><button type="button" data-mx="-1" aria-label="Posunúť doľava">←</button><button type="button" data-my="-1" aria-label="Posunúť hore">↑</button><button type="button" data-my="1" aria-label="Posunúť dole">↓</button><button type="button" data-mx="1" aria-label="Posunúť doprava">→</button>';sw.appendChild(zb);
   (()=>{let tm=0,iv=0;const step=b=>{const lt=state.layT;if(b.dataset.z){const k=+b.dataset.z;if(lt==='txt'){const sz=$('txSize');if(sz){sz.value=clamp(+sz.value+k*0.5,+sz.min,+sz.max);layoutChanged(true,true);}return;}
     const t=lt==='bg'?state.bgT:actPh();if(!t)return;if(lt==='photo'){t.manual=true;}t.s=clamp(t.s*(k>0?1.06:1/1.06),lt==='bg'?0.5:0.2,4);if(lt==='bg'){state.bgT.x=clamp(state.bgT.x,-0.8,0.8);state.bgT.y=clamp(state.bgT.y,-0.8,0.8);}layoutChanged(true,true);}
     else if(b.dataset.r&&lt==='photo'){const t=actPh();if(!t)return;t.manual=true;t.r=((((t.r||0)+(+b.dataset.r)*2+540)%360)+360)%360-180;layoutChanged(true,true);}};
@@ -4615,8 +4672,13 @@ document.addEventListener('touchmove',e=>{if(e.touches.length>1&&e.target.closes
     const _sl=setLayT;setLayT=function(){const r=_sl.apply(this,arguments);syncZoomField();return r;};
     const _rp=renderPhotos;renderPhotos=function(){const r=_rp.apply(this,arguments);syncZoomField();return r;};
     const _sv=setView;setView=function(){const r=_sv.apply(this,arguments);syncZoomField();flushPend();return r;};syncZoomField();
-    zb.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.fit){wholePhoto();return;}step(b);syncZoomField();});
+    zb.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.fit){wholePhoto();return;}
+      if(b.dataset.mx||b.dataset.my){const lt=state.layT,t=lt==='bg'?state.bgT:lt==='txt'?state.txT:actPh();if(!t)return;if(lt==='photo')t.manual=true;const st=e.shiftKey?0.05:0.01;t.x=(t.x||0)+(+b.dataset.mx||0)*st;t.y=(t.y||0)+(+b.dataset.my||0)*st;
+        if(lt==='bg'){t.x=clamp(t.x,-0.8,0.8);t.y=clamp(t.y,-0.8,0.8);}if(lt==='txt'){t.x=clamp(t.x,-0.22,0.22);t.y=clamp(t.y,-0.46,0.3);}layoutChanged(true,true);return;}step(b);syncZoomField();});
     function wholePhoto(){const ph=actPh();if(!ph||!ph.src)return;const p=params();
+      if(['cyl','cone'].includes(p.surf)){const ns=state.photos.filter(q=>q.src).length||1,fw=p.frameOn?p.fw:0,A=Math.min(...state.photos.filter(q=>q.src).map(q=>q.src.width/q.src.height)),H=$('H'),nh=Math.round((p.W/ns*0.94/A+2*fw)*10)/10;   // lamp: height so each photo is whole in its share
+        if(H){H.value=clamp(nh,+H.min||20,+H.max||400);H.dispatchEvent(new Event('input',{bubbles:true}));H.dispatchEvent(new Event('change',{bubbles:true}));}
+        state.photos.forEach((q,i)=>{if(!q.src)return;q.s=1;q.y=0;q.r=0;q.x=ns>1?i/ns:0;q.manual=true;});renderPhotos();layoutChanged(true,true);toast('Celé fotky – výška lampy sa prispôsobila na '+String(H?H.value:nh).replace('.',',')+' mm, nič sa neoreže.');return;}
       if(['flat','arc'].includes(p.surf)&&state.photos.length===1){const fw=p.frameOn?p.fw:0,A=ph.src.width/ph.src.height,H=$('H'),nh=Math.round(((p.W-2*fw)/A+2*fw)*10)/10;
         if(H){H.value=clamp(nh,+H.min||20,+H.max||400);H.dispatchEvent(new Event('input',{bubbles:true}));H.dispatchEvent(new Event('change',{bubbles:true}));}}
       ph.s=1;ph.x=0;ph.y=0;ph.r=0;ph.manual=true;renderPhotos();layoutChanged(true,true);toast(['flat','arc'].includes(p.surf)&&state.photos.length===1?'Celá fotka – výška kusu sa prispôsobila fotke, nič sa neoreže.':'Fotka vrátená na celú veľkosť.');}
